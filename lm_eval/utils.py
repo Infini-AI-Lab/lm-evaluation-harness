@@ -270,6 +270,39 @@ def make_table(result_dict, column: str = "results"):
 
     return md_writer.dumps()
 
+def make_table_simple(result_dict, column: str = "results"):
+    """Generate table of results."""
+    from pytablewriter import LatexTableWriter, MarkdownTableWriter
+
+    if column == "results":
+        column_name = "Tasks"
+    elif column == "groups":
+        column_name = "Groups"
+
+    all_headers = [
+        column_name,
+        "Metric",
+        "Value",
+    ]
+
+    md_writer = MarkdownTableWriter()
+    latex_writer = LatexTableWriter()
+    md_writer.headers = all_headers
+    latex_writer.headers = all_headers
+
+    values = []
+
+    for k, dic in result_dict[column].items():
+        for m,v in dic.items():
+                values.append([k, m, "%.4f" % v])
+            
+    md_writer.value_matrix = values
+    latex_writer.value_matrix = values
+
+    # todo: make latex table look good
+    # print(latex_writer.dumps())
+
+    return md_writer.dumps()
 
 def positional_deprecated(fn):
     """

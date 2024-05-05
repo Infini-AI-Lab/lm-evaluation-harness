@@ -14,7 +14,7 @@ from lm_eval import evaluator, utils
 from lm_eval.evaluator import request_caching_arg_to_dict
 from lm_eval.logging_utils import WandbLogger
 from lm_eval.tasks import TaskManager
-from lm_eval.utils import make_table, simple_parse_args_string
+from lm_eval.utils import make_table, simple_parse_args_string, make_table_simple
 
 
 DEFAULT_RESULTS_FILE = "results.json"
@@ -87,6 +87,8 @@ def setup_parser() -> argparse.ArgumentParser:
         type=str,
         help="Comma separated string arguments for model, e.g. `pretrained=EleutherAI/pythia-160m,dtype=float32`",
     )
+    
+    
     parser.add_argument(
         "--num_fewshot",
         "-f",
@@ -404,9 +406,12 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
             f"{args.model} ({args.model_args}), gen_kwargs: ({args.gen_kwargs}), limit: {args.limit}, num_fewshot: {args.num_fewshot}, "
             f"batch_size: {args.batch_size}{f' ({batch_sizes})' if batch_sizes else ''}"
         )
-        print(make_table(results))
-        if "groups" in results:
-            print(make_table(results, "groups"))
+        if args.model != "sd":
+            print(make_table(results))
+            if "groups" in results:
+                print(make_table(results, "groups"))
+        else:
+            print(make_table_simple(results))
 
         if args.wandb_args:
             # Tear down wandb run once all the logging is done.

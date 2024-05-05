@@ -131,6 +131,7 @@ class LM(abc.ABC):
         additional_config = {} if additional_config is None else additional_config
         args = utils.simple_parse_args_string(arg_string)
         args2 = {k: v for k, v in additional_config.items() if v is not None}
+        
         return cls(**args, **args2)
 
     @classmethod

@@ -23,7 +23,7 @@ from lm_eval.evaluator_utils import (
 from lm_eval.logging_utils import add_env_info, get_git_commit_hash
 from lm_eval.tasks import TaskManager, get_task_dict
 from lm_eval.utils import eval_logger, positional_deprecated, simple_parse_args_string
-
+from lm_eval.models.specdec import SDLM
 
 if TYPE_CHECKING:
     from lm_eval.api.model import LM
@@ -147,6 +147,7 @@ def simple_evaluate(
             gen_kwargs = None
 
     if isinstance(model, str):
+        
         if model_args is None:
             eval_logger.warning("model_args not specified. Using defaults.")
             model_args = ""
@@ -174,17 +175,27 @@ def simple_evaluate(
             )
 
         else:
-            eval_logger.info(
-                f"Initializing {model} model, with arguments: {simple_parse_args_string(model_args)}"
-            )
-            lm = lm_eval.api.registry.get_model(model).create_from_arg_string(
-                model_args,
-                {
-                    "batch_size": batch_size,
-                    "max_batch_size": max_batch_size,
-                    "device": device,
-                },
-            )
+            if model in ["specdec", "hfspecdec", "sd"]:
+                lm  = SDLM.create_from_arg_string(
+                    model_args,
+                    {
+                        "batch_size": batch_size,
+                        "max_batch_size": max_batch_size,
+                        "device": device,
+                    },
+                )
+            else:
+                eval_logger.info(
+                    f"Initializing {model} model, with arguments: {simple_parse_args_string(model_args)}"
+                )
+                lm = lm_eval.api.registry.get_model(model).create_from_arg_string(
+                    model_args,
+                    {
+                        "batch_size": batch_size,
+                        "max_batch_size": max_batch_size,
+                        "device": device,
+                    },
+                )
     else:
         if not isinstance(model, lm_eval.api.model.LM):
             raise TypeError
@@ -376,6 +387,7 @@ def evaluate(
     ### Run LM on inputs, get all outputs ###
     # execute each type of request
     for reqtype, reqs in requests.items():
+        
         eval_logger.info(f"Running {reqtype} requests")
         # create `K` copies of each request `req` based off `K = req.repeats`
         cloned_reqs = []
@@ -389,6 +401,7 @@ def evaluate(
         # run requests through model
         resps = getattr(lm, reqtype)(cloned_reqs)
 
+        
         # put responses from model into a list of length K for each request.
         for x, req in zip(resps, cloned_reqs):
             req.resps.append(x)
@@ -398,181 +411,205 @@ def evaluate(
 
     RANK = lm.rank
     WORLD_SIZE = lm.world_size
+    
     ### Postprocess outputs ###
     # TODO: del model here, maybe (idea: allow user to specify device of e.g. reward model separately)
-    for task_output in eval_tasks:
-        task = task_output.task
-        task.apply_filters()
+    if not isinstance(lm, SDLM):
+        for task_output in eval_tasks:
+            task = task_output.task
+            task.apply_filters()
 
-        ### Collect values of metrics on all datapoints ###
-        # # unpack results and sort back in order and return control to Task
-        # TODO: make it possible to use a different metric per filter
-        # Pre-process task.instances to group by doc_id
-        instances_by_doc_id = defaultdict(list)
-        for instance in task.instances:
-            instances_by_doc_id[instance.doc_id].append(instance)
-        # Sort instances within each group
-        for instances in instances_by_doc_id.values():
-            instances.sort(key=lambda x: x.idx)
-        # iterate over different filters used
-        for filter_key in task.instances[0].filtered_resps.keys():
-            doc_iterator = task.doc_iterator(
-                rank=RANK, limit=limit, world_size=WORLD_SIZE
-            )
-            for doc_id, doc in doc_iterator:
-                requests = instances_by_doc_id[doc_id]
-                metrics = task.process_results(
-                    doc, [req.filtered_resps[filter_key] for req in requests]
+            ### Collect values of metrics on all datapoints ###
+            # # unpack results and sort back in order and return control to Task
+            # TODO: make it possible to use a different metric per filter
+            # Pre-process task.instances to group by doc_id
+            instances_by_doc_id = defaultdict(list)
+            for instance in task.instances:
+                instances_by_doc_id[instance.doc_id].append(instance)
+            # Sort instances within each group
+            for instances in instances_by_doc_id.values():
+                instances.sort(key=lambda x: x.idx)
+            # iterate over different filters used
+            for filter_key in task.instances[0].filtered_resps.keys():
+                doc_iterator = task.doc_iterator(
+                    rank=RANK, limit=limit, world_size=WORLD_SIZE
                 )
+                for doc_id, doc in doc_iterator:
+                    requests = instances_by_doc_id[doc_id]
+                    metrics = task.process_results(
+                        doc, [req.filtered_resps[filter_key] for req in requests]
+                    )
+                    if log_samples:
+                        target = task.doc_to_target(doc)
+                        example = {
+                            "doc_id": doc_id,
+                            "doc": doc,
+                            "target": target,
+                            "arguments": [req.args for req in requests],
+                            "resps": [req.resps for req in requests],
+                            "filtered_resps": [
+                                req.filtered_resps[filter_key] for req in requests
+                            ],
+                        }
+                        example.update(metrics)
+                        task_output.logged_samples.append(example)
+                    for metric, value in metrics.items():
+                        task_output.sample_metrics[(metric, filter_key)].append(value)
+            
+
+        if WORLD_SIZE > 1:
+            # if multigpu, then gather data across all ranks to rank 0
+            # first gather logged samples across all ranks
+            for task_output in eval_tasks:
                 if log_samples:
-                    target = task.doc_to_target(doc)
-                    example = {
-                        "doc_id": doc_id,
-                        "doc": doc,
-                        "target": target,
-                        "arguments": [req.args for req in requests],
-                        "resps": [req.resps for req in requests],
-                        "filtered_resps": [
-                            req.filtered_resps[filter_key] for req in requests
-                        ],
-                    }
-                    example.update(metrics)
-                    task_output.logged_samples.append(example)
-                for metric, value in metrics.items():
-                    task_output.sample_metrics[(metric, filter_key)].append(value)
-
-    if WORLD_SIZE > 1:
-        # if multigpu, then gather data across all ranks to rank 0
-        # first gather logged samples across all ranks
-        for task_output in eval_tasks:
-            if log_samples:
-                # for task_name, task_samples in list(samples.items()):
-                full_samples = [None] * WORLD_SIZE if RANK == 0 else None
-                torch.distributed.gather_object(
-                    obj=task_output.logged_samples,
-                    object_gather_list=full_samples,
-                    dst=0,
-                )
-
-                if RANK == 0:
-                    task_output.logged_samples = list(
-                        itertools.chain.from_iterable(full_samples)
+                    # for task_name, task_samples in list(samples.items()):
+                    full_samples = [None] * WORLD_SIZE if RANK == 0 else None
+                    torch.distributed.gather_object(
+                        obj=task_output.logged_samples,
+                        object_gather_list=full_samples,
+                        dst=0,
                     )
 
-            # then collect metrics across all ranks
-            for metrics in task_output.sample_metrics:
-                metric_list = [None] * WORLD_SIZE if RANK == 0 else None
-                torch.distributed.gather_object(
-                    obj=task_output.sample_metrics[metrics],
-                    object_gather_list=metric_list,
-                    dst=0,
-                )
-                if RANK == 0:
-                    task_output.sample_metrics[metrics] = list(
-                        itertools.chain.from_iterable(metric_list)
+                    if RANK == 0:
+                        task_output.logged_samples = list(
+                            itertools.chain.from_iterable(full_samples)
+                        )
+
+                # then collect metrics across all ranks
+                for metrics in task_output.sample_metrics:
+                    metric_list = [None] * WORLD_SIZE if RANK == 0 else None
+                    torch.distributed.gather_object(
+                        obj=task_output.sample_metrics[metrics],
+                        object_gather_list=metric_list,
+                        dst=0,
                     )
+                    if RANK == 0:
+                        task_output.sample_metrics[metrics] = list(
+                            itertools.chain.from_iterable(metric_list)
+                        )
 
-    if RANK == 0:
-        ### Aggregate results over all datapoints ###
-        # aggregate results ; run bootstrap CIs
-        for task_output in eval_tasks:
-            task_output.calculate_aggregate_metric(bootstrap_iters=bootstrap_iters)
-        results, samples, configs, versions, num_fewshot = consolidate_results(
-            eval_tasks
-        )
+        if RANK == 0:
+            ### Aggregate results over all datapoints ###
+            # aggregate results ; run bootstrap CIs
+            for task_output in eval_tasks:
+                task_output.calculate_aggregate_metric(bootstrap_iters=bootstrap_iters)
+            results, samples, configs, versions, num_fewshot = consolidate_results(
+                eval_tasks
+            )
 
-        ### Calculate group metrics ###
-        if bool(results):
-            for group, task_list in reversed(task_hierarchy.items()):
-                if len(task_list) == 0:
-                    # task_hierarchy entries are either
-                    # `group_name: [subtask1, subtask2, ...]`
-                    # or `task_name: []`.
-                    # we only want to operate on groups here.
-                    continue
-                metric_list = list(
-                    {
-                        key
-                        for task in task_list
-                        for key in results[task].keys()
-                        if "_stderr" not in key and key not in ["alias", "samples"]
-                    }
-                )
-                for metric in metric_list:
-                    stderr = "_stderr,".join(metric.split(","))
+            ### Calculate group metrics ###
+            if bool(results):
+                for group, task_list in reversed(task_hierarchy.items()):
+                    if len(task_list) == 0:
+                        # task_hierarchy entries are either
+                        # `group_name: [subtask1, subtask2, ...]`
+                        # or `task_name: []`.
+                        # we only want to operate on groups here.
+                        continue
+                    metric_list = list(
+                        {
+                            key
+                            for task in task_list
+                            for key in results[task].keys()
+                            if "_stderr" not in key and key not in ["alias", "samples"]
+                        }
+                    )
+                    for metric in metric_list:
+                        stderr = "_stderr,".join(metric.split(","))
 
-                    # gather metrics, sizes, and stderrs from subtasks
-                    metrics = [
-                        results[task][metric]
-                        for task in task_list
-                        if metric in results[task]
-                    ]  # TODO: copy?
-                    stderrs = [
-                        results[task][stderr]
-                        for task in task_list
-                        if stderr in results[task]
-                    ]
-                    sizes = [
-                        results[task]["samples"]
-                        for task in task_list
-                        if metric in results[task]
-                    ]
+                        # gather metrics, sizes, and stderrs from subtasks
+                        metrics = [
+                            results[task][metric]
+                            for task in task_list
+                            if metric in results[task]
+                        ]  # TODO: copy?
+                        stderrs = [
+                            results[task][stderr]
+                            for task in task_list
+                            if stderr in results[task]
+                        ]
+                        sizes = [
+                            results[task]["samples"]
+                            for task in task_list
+                            if metric in results[task]
+                        ]
 
-                    # compute group's pooled metric and stderr
-                    results[group][
-                        metric
-                    ] = lm_eval.api.metrics.aggregate_subtask_metrics(metrics, sizes)
-                    # TODO: calculate grouped metric using aggregation fn
-                    if "N/A" in stderrs:
-                        results[group][stderr] = "N/A"
-                    else:
+                        # compute group's pooled metric and stderr
                         results[group][
-                            stderr
-                        ] = lm_eval.api.metrics.pooled_sample_stderr(stderrs, sizes)
-                        # TODO: allow GroupConfigs to choose which variance formula is used, for back-compatibility
-                        # To use the old (likely incorrect) variance formula, comment out the above and uncomment this line:
-                        # results[group][stderr] = lm_eval.api.metrics.combined_sample_stderr(stderrs, sizes, metrics=metrics)
+                            metric
+                        ] = lm_eval.api.metrics.aggregate_subtask_metrics(metrics, sizes)
+                        # TODO: calculate grouped metric using aggregation fn
+                        if "N/A" in stderrs:
+                            results[group][stderr] = "N/A"
+                        else:
+                            results[group][
+                                stderr
+                            ] = lm_eval.api.metrics.pooled_sample_stderr(stderrs, sizes)
+                            # TODO: allow GroupConfigs to choose which variance formula is used, for back-compatibility
+                            # To use the old (likely incorrect) variance formula, comment out the above and uncomment this line:
+                            # results[group][stderr] = lm_eval.api.metrics.combined_sample_stderr(stderrs, sizes, metrics=metrics)
 
-                    results[group]["samples"] = sum(sizes)
+                        results[group]["samples"] = sum(sizes)
 
-        results_agg = defaultdict(dict)
-        groups_agg = defaultdict(dict)
-        all_tasks_list = list(task_hierarchy.keys())
-        while True:
-            add_tasks_list = list(k for k in results_agg.keys())
-            left_tasks_list = sorted(list(set(all_tasks_list) - set(add_tasks_list)))
-            if len(left_tasks_list) == 0:
-                break
+            results_agg = defaultdict(dict)
+            groups_agg = defaultdict(dict)
+            all_tasks_list = list(task_hierarchy.keys())
+            while True:
+                add_tasks_list = list(k for k in results_agg.keys())
+                left_tasks_list = sorted(list(set(all_tasks_list) - set(add_tasks_list)))
+                if len(left_tasks_list) == 0:
+                    break
 
-            _task_hierarchy = {
-                k: v for k, v in task_hierarchy.items() if k in left_tasks_list
+                _task_hierarchy = {
+                    k: v for k, v in task_hierarchy.items() if k in left_tasks_list
+                }
+                _results_agg, _groups_agg = prepare_print_tasks(_task_hierarchy, results)
+
+                results_agg = {**results_agg, **_results_agg}
+                groups_agg = {**groups_agg, **_groups_agg}
+
+            for group_name, task_list in task_hierarchy.items():
+                if task_list:
+                    num_fewshot[group_name] = num_fewshot[
+                        task_list[0]
+                    ]  # TODO: validate this
+
+            results_dict = {
+                "results": dict(results_agg.items()),
+                **({"groups": dict(groups_agg.items())} if bool(groups_agg) else {}),
+                "group_subtasks": dict(reversed(task_hierarchy.items())),
+                "configs": dict(sorted(configs.items())),
+                "versions": dict(sorted(versions.items())),
+                "n-shot": dict(sorted(num_fewshot.items())),
             }
-            _results_agg, _groups_agg = prepare_print_tasks(_task_hierarchy, results)
+            if log_samples:
+                results_dict["samples"] = dict(samples)
 
-            results_agg = {**results_agg, **_results_agg}
-            groups_agg = {**groups_agg, **_groups_agg}
+            return results_dict
 
-        for group_name, task_list in task_hierarchy.items():
-            if task_list:
-                num_fewshot[group_name] = num_fewshot[
-                    task_list[0]
-                ]  # TODO: validate this
-
-        results_dict = {
-            "results": dict(results_agg.items()),
-            **({"groups": dict(groups_agg.items())} if bool(groups_agg) else {}),
-            "group_subtasks": dict(reversed(task_hierarchy.items())),
-            "configs": dict(sorted(configs.items())),
-            "versions": dict(sorted(versions.items())),
-            "n-shot": dict(sorted(num_fewshot.items())),
-        }
-        if log_samples:
-            results_dict["samples"] = dict(samples)
-
-        return results_dict
-
+        else:
+            return None
     else:
-        return None
+        
+        alphas = []
+        num_samples = []
+        
+        for reqtype, reqs in requests.items():
+            for req in reqs:
+                resps = req.resps
+                alphas.append(resps[0]["alpha"])
+                num_samples.append(resps[0]["num_samples"])
+        alphas = torch.Tensor(alphas)
+        num_samples = torch.Tensor(num_samples)
+        alpha = (alphas * num_samples).sum() / num_samples.sum()
+        results_dict = {
+            "results":{
+                task.config.task:{
+                    "alpha":alpha.item()
+                }
+            }
+        }
+        return results_dict
 
 
 def request_caching_arg_to_dict(cache_requests: str) -> dict:
