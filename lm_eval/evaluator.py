@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from lm_eval.api.model import LM
     from lm_eval.tasks import Task
 
-
+SD_SUPPORTED_TASK = ["generate_until", "loglikelihood"]
 @positional_deprecated
 def simple_evaluate(
     model,
@@ -341,6 +341,7 @@ def evaluate(
 
     # get lists of group hierarchy and each type of request
     task_hierarchy, eval_tasks = get_task_list(task_dict)
+    
     if not log_samples:
         if not all(
             "bypass" not in getattr(task_output.task, "_metric_fn_list", {}).keys()
@@ -387,7 +388,8 @@ def evaluate(
     ### Run LM on inputs, get all outputs ###
     # execute each type of request
     for reqtype, reqs in requests.items():
-        
+        if isinstance(lm, SDLM):
+            assert reqtype in SD_SUPPORTED_TASK
         eval_logger.info(f"Running {reqtype} requests")
         # create `K` copies of each request `req` based off `K = req.repeats`
         cloned_reqs = []
@@ -591,24 +593,33 @@ def evaluate(
             return None
     else:
         
-        alphas = []
-        num_samples = []
-        
-        for reqtype, reqs in requests.items():
-            for req in reqs:
-                resps = req.resps
-                alphas.append(resps[0]["alpha"])
-                num_samples.append(resps[0]["num_samples"])
-        alphas = torch.Tensor(alphas)
-        num_samples = torch.Tensor(num_samples)
-        alpha = (alphas * num_samples).sum() / num_samples.sum()
         results_dict = {
             "results":{
-                task.config.task:{
-                    "alpha":alpha.item()
-                }
             }
         }
+        for reqtype, reqs in requests.items():
+            for req in reqs:
+                task_name = req.task_name
+                if task_name not in results_dict["results"].keys():
+                    results_dict["results"][task_name] = {
+                        "alpha": [],
+                        "num_samples": []
+                    }
+                resps = req.resps
+                results_dict["results"][task_name]["alpha"].append(resps[0]["alpha"])
+                results_dict["results"][task_name]["num_samples"].append(resps[0]["num_samples"])
+        
+        for task_name in results_dict["results"].keys():
+            alphas = results_dict["results"][task_name]["alpha"]
+            num_samples = results_dict["results"][task_name]["num_samples"]
+            alphas = torch.Tensor(alphas)
+            num_samples = torch.Tensor(num_samples)
+            alpha = (alphas * num_samples).sum() / num_samples.sum()
+            results_dict["results"][task_name]["alpha"] = alpha.item()
+            
+        for task_name in results_dict["results"].keys():
+            results_dict["results"][task_name].pop("num_samples", None)
+        print(results_dict)
         return results_dict
 
 
