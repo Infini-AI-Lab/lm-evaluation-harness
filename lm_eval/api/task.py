@@ -745,15 +745,9 @@ class ConfigurableTask(Task):
                     self._metric_fn_list[metric_name] = metric_fn
                     self._metric_fn_kwargs[metric_name] = kwargs
                 else:
-                    if 'rouge' in metric_name:
-                        tmp_metric_name = 'rouge'
-                        self._metric_fn_list[metric_name] = get_metric(
-                            tmp_metric_name, hf_evaluate_metric
-                        )
-                    else:
-                        self._metric_fn_list[metric_name] = get_metric(
-                            metric_name, hf_evaluate_metric
-                        )
+                    self._metric_fn_list[metric_name] = get_metric(
+                        metric_name, hf_evaluate_metric
+                    )
                     self._metric_fn_kwargs[metric_name] = kwargs
 
                 if "aggregation" in metric_config:
