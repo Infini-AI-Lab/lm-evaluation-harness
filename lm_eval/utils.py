@@ -295,6 +295,7 @@ def make_table_simple(result_dict, column: str = "results"):
     for k, dic in result_dict[column].items():
         for m,v in dic.items():
                 values.append([k, m, "%.4f" % v])
+                k = ""
             
     md_writer.value_matrix = values
     latex_writer.value_matrix = values

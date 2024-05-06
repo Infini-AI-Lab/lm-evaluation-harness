@@ -609,19 +609,30 @@ def evaluate(
                         "num_samples": []
                     }
                 resps = req.resps
+                
+                
                 results_dict["results"][task_name]["alpha"].append(resps[0]["alpha"])
                 results_dict["results"][task_name]["num_samples"].append(resps[0]["num_samples"])
+
         
         for task_name in results_dict["results"].keys():
             alphas = results_dict["results"][task_name]["alpha"]
             num_samples = results_dict["results"][task_name]["num_samples"]
-            alphas = torch.Tensor(alphas)
-            num_samples = torch.Tensor(num_samples)
-            alpha = (alphas * num_samples).sum() / num_samples.sum()
-            results_dict["results"][task_name]["alpha"] = alpha.item()
+            alphas = torch.stack(alphas)
+            
+            
+            num_samples = torch.Tensor(num_samples).unsqueeze(-1)
+           
+            alpha = (alphas * num_samples).sum(dim=0) / num_samples.sum()
+            width = alpha.shape[0]
+            
+            for i in range(width):
+                results_dict["results"][task_name]["alpha-{}".format(i)] = alpha[i].item()
             
         for task_name in results_dict["results"].keys():
             results_dict["results"][task_name].pop("num_samples", None)
+            results_dict["results"][task_name].pop("alpha", None)
+        
         return results_dict
 
 

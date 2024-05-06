@@ -47,6 +47,13 @@ def get_sampling_logits(logits :torch.Tensor, top_p:float, T: float, replicate =
                 indices_to_remove = filter.scatter(-1, sorted_indices, filter)
                 logits[indices_to_remove] = float('-inf')
     return logits
+
+def get_residual(p: torch.Tensor, q:torch.Tensor):
+    residual = p - q
+    residual[residual < 0] = 0.0
+    residual = residual / (residual.sum(dim=-1).unsqueeze(-1) + 1e-9)
+    return residual
+
 eval_logger = utils.eval_logger
 
 
@@ -447,6 +454,7 @@ class SDLM(TemplateLM):
         temperature:float = 0.6,
         top_p: float = 1.0,
         greedy: bool = False,
+        width: int = 4,
         revision: Optional[str] = "main",
         dtype: Optional[Union[str, torch.dtype]] = "auto",
         trust_remote_code: Optional[bool] = False,
@@ -499,6 +507,7 @@ class SDLM(TemplateLM):
         self.temperature = temperature
         self.top_p = top_p
         self.greedy = greedy
+        self.width = width
         return None
 
     def _create_tokenizer(
@@ -707,8 +716,9 @@ class SDLM(TemplateLM):
             )
             
             acceptance_rate, num_samples = self.specdec(context_enc)
+            
             res.append({
-                    "alpha": acceptance_rate.item(),
+                    "alpha": acceptance_rate.cumsum_(dim=0),
                     "num_samples": num_samples
                 })
                 
@@ -752,6 +762,9 @@ class SDLM(TemplateLM):
                     input_ids = new_token
                     tokens = torch.cat([tokens, input_ids], dim=-1)
 
+            num_samples = tokens.shape[1] - initial_len
+            acceptance_rate = torch.zeros(self.width, num_samples).to(self.device)
+            
             target_logits :torch.Tensor= self._model(input_ids=tokens).logits
             draft_logits :torch.Tensor= self._draft(input_ids=tokens).logits
                 
@@ -760,10 +773,25 @@ class SDLM(TemplateLM):
                 
             target_logits = target_logits[...,initial_len:,:]
             draft_logits = draft_logits[...,initial_len:,:]
-            target_proba = torch.nn.functional.softmax(target_logits/T, dim=-1)
-            draft_proba = torch.nn.functional.softmax(draft_logits/T, dim=-1)
-                
-            acceptance_rate = torch.minimum(target_proba, draft_proba).sum(-1).mean()
-            num_samples = tokens.shape[1] - initial_len
+            target_proba = torch.nn.functional.softmax(target_logits/T, dim=-1)[0]
+            draft_proba = torch.nn.functional.softmax(draft_logits/T, dim=-1)[0]
             
+            for k in range(self.width):
+                
+                kth_sampled_token = draft_proba.multinomial(num_samples=1)
+                draft_token_proba = draft_proba.gather(dim=-1, index=kth_sampled_token)
+                target_token_proba = target_proba.gather(dim=-1, index=kth_sampled_token)
+                if k > 0:
+                    accumative_acceptance_rate = acceptance_rate[:k].sum(dim=0)
+                    acceptance_rate[k] = (target_token_proba / (draft_token_proba + 1e-9)).squeeze(-1)
+                    acceptance_rate[k].clamp_max_(max=1.0)
+                    acceptance_rate[k] = (1 - accumative_acceptance_rate) * acceptance_rate[k]
+                else:
+                    acceptance_rate[k] = (target_token_proba / (draft_token_proba + 1e-9)).squeeze(-1)
+                    acceptance_rate[k].clamp_max_(max=1.0)
+                draft_proba.scatter_(dim=-1, index=kth_sampled_token, value=0.0)
+                draft_proba = draft_proba / draft_proba.sum(dim=-1,keepdim=True)
+            
+        acceptance_rate = acceptance_rate.mean(dim=-1).cpu()
+        
         return acceptance_rate, num_samples
