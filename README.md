@@ -73,7 +73,37 @@ CUDA_VISIBLE_DEVICES=0 lm_eval --model sd \
     --batch_size 1 \
     --limit 0.1 \
 ```
+Example Outputs with the command above
 
+sd (pretrained=meta-llama/Llama-2-7b-hf,draft=JackFram/llama-160m,temperature=0.6), gen_kwargs: (None), limit: 0.1, num_fewshot: None, batch_size: 1
+|    Tasks     |Metric |Value |
+|--------------|-------|-----:|
+|truthfulqa_mc2|alpha-0|0.6678|
+|              |alpha-1|0.7770|
+|              |alpha-2|0.8309|
+|              |alpha-3|0.8579|
+|truthfulqa_mc1|alpha-0|0.6661|
+|              |alpha-1|0.7759|
+|              |alpha-2|0.8265|
+|              |alpha-3|0.8562|
+|truthfulqa_gen|alpha-0|0.6805|
+|              |alpha-1|0.7936|
+|              |alpha-2|0.8424|
+|              |alpha-3|0.8686|
+|openbookqa    |alpha-0|0.6231|
+|              |alpha-1|0.7792|
+|              |alpha-2|0.8478|
+|              |alpha-3|0.8854|
+|gsm8k         |alpha-0|0.4543|
+|              |alpha-1|0.5951|
+|              |alpha-2|0.6684|
+|              |alpha-3|0.7208|
+|coqa          |alpha-0|0.5628|
+|              |alpha-1|0.6712|
+|              |alpha-2|0.7187|
+|              |alpha-3|0.7511|
+
+`alpha-x` is interpreted as acceptance rate with `x` branch which is monotonically increasing.
 ### Current Limitations and Instructions (v0.2)
 
 - [ ] CUDA_VISIBLE_DEVICES must be assigned.
