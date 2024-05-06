@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from lm_eval.api.model import LM
     from lm_eval.tasks import Task
 
-SD_SUPPORTED_TASK = ["generate_until", "loglikelihood"]
+SD_SUPPORTED_TASK = ["generate_until", "loglikelihood", "specdec_eval"]
 @positional_deprecated
 def simple_evaluate(
     model,
@@ -338,7 +338,7 @@ def evaluate(
     # stores the amount to pad out reqs per req. type so that
     # number of fwd passes per distributed rank is equal
     padding_requests = defaultdict(int)
-
+    
     # get lists of group hierarchy and each type of request
     task_hierarchy, eval_tasks = get_task_list(task_dict)
     
@@ -349,7 +349,10 @@ def evaluate(
         ):
             raise ValueError("log_samples must be True for 'bypass' metric-only tasks")
     for task_output in eval_tasks:
+        
         task: Task = task_output.task
+        if isinstance(lm, SDLM):
+            task.OUTPUT_TYPE = "specdec_eval"
         limit = get_sample_size(task, limit)
         task.build_all_requests(
             limit=limit,
@@ -619,7 +622,6 @@ def evaluate(
             
         for task_name in results_dict["results"].keys():
             results_dict["results"][task_name].pop("num_samples", None)
-        print(results_dict)
         return results_dict
 
 

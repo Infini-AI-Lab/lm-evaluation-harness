@@ -3,7 +3,7 @@ group:
 task: gsm8k_specdec
 dataset_path: gsm8k
 dataset_name: main
-output_type: generate_until
+output_type: specdec_eval
 training_split: train
 fewshot_split: train
 test_split: test

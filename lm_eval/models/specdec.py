@@ -75,7 +75,7 @@ def _get_accelerate_args(
     return args
 
 
-@register_model("specdec", "hfspecdec", "sd")
+@register_model("sd")
 class SDLM(TemplateLM):
     """
     An abstracted Huggingface model class. Enables usage with both models of
@@ -236,8 +236,8 @@ class SDLM(TemplateLM):
             self.model.eval()
             self.model.tie_weights()
             
-            self._draft.eval()
-            self._draft.tie_weights()
+            self.draft.eval()
+            self.draft.tie_weights()
 
         if isinstance(pretrained, str) and (gpus >= 1 or str(self.device) == "mps"):
             # TODO: can remove this whole snippet except in the mps case, perhaps?
@@ -246,8 +246,7 @@ class SDLM(TemplateLM):
                 # if not using HF Accelerate or device_map
                 # or any other option that preloads model onto device
                 try:
-                    self.model.to(self.device)
-                    self._draft.to(self.device)
+                    self.draft.to(self.device)
                 except ValueError:
                     eval_logger.debug(
                         "Failed to place model onto specified device. This may be because the model is quantized via `bitsandbytes` or `device_map` is provided. If the desired GPU is being used, this message is safe to ignore."
@@ -309,58 +308,7 @@ class SDLM(TemplateLM):
         else:
             self.batch_size_per_gpu = int(batch_size)
 
-        if isinstance(pretrained, str):
-            # multigpu data-parallel support when launched with accelerate
-            if gpus > 1:
-                if parallelize:
-                    if accelerator.num_processes > 1:
-                        raise RuntimeError(
-                            "Attempted to use both a HF Accelerate `device_map` and to launch via `accelerate launch`. If this is the case, please either remove `parallelize=True` from --model_args or launch outside of the Accelerate launcher."
-                        )
-                    else:
-                        pass
-                elif accelerator.num_processes == 1:
-                    # if we aren't launching via accelerate, ditch
-                    self._rank = 0
-                    self._world_size = 1
-                else:
-                    if gpus > accelerator.num_processes:
-                        eval_logger.warning(
-                            "WARNING: The number of total system GPUs does not match the number of spawned processes. "
-                            "If you would like to use data parallelism, please launch the script "
-                            "with 'accelerate launch *script*'. "
-                            f"Current run will proceed with {accelerator.num_processes} devices."
-                        )
-                    assert (
-                        accelerator.distributed_type
-                        in [
-                            DistributedType.FSDP,
-                            DistributedType.MULTI_GPU,
-                        ]
-                    ), "Unsupported distributed type provided. Only DDP and FSDP are supported."
-                    if accelerator.distributed_type == DistributedType.FSDP:
-                        self._model = accelerator.prepare(self.model)
-                    else:
-                        self._model = accelerator.prepare_model(
-                            self.model, evaluation_mode=True
-                        )
-                    self._device = torch.device(
-                        f"cuda:{accelerator.local_process_index}"
-                    )
-                    self.accelerator = accelerator
 
-                    if self.accelerator.is_local_main_process:
-                        eval_logger.info(f"Using {gpus} devices with data parallelism")
-
-                    self._rank = self.accelerator.local_process_index
-                    self._world_size = self.accelerator.num_processes
-        else:
-            # if a PreTrainedModel was passed into HFLM, we forgo distributed setup.
-            eval_logger.warning(
-                "Passed an already-initialized model through `pretrained`, assuming single-process call to evaluate() or custom distributed integration"
-            )
-            self._rank = 0
-            self._world_size = 1
 
         self.custom_prefix_token_id = prefix_token_id
         if prefix_token_id is not None:
@@ -375,11 +323,10 @@ class SDLM(TemplateLM):
 
     @property
     def model(self):
-        # returns the model, unwrapping it if using Accelerate
-        if hasattr(self, "accelerator"):
-            return self.accelerator.unwrap_model(self._model)
-        else:
-            return self._model
+        return self._model
+    @property
+    def draft(self):
+        return self._draft
 
     @property
     def eot_token_id(self):
@@ -534,14 +481,17 @@ class SDLM(TemplateLM):
         self._model = self.AUTO_MODEL_CLASS.from_pretrained(
                 pretrained,
                 revision=revision,
-                torch_dtype=get_dtype(dtype),
                 trust_remote_code=trust_remote_code,
+                torch_dtype=get_dtype(dtype),
+                device_map="auto",
                 **model_kwargs,
+                
             )
+        
         self._draft = self.AUTO_MODEL_CLASS.from_pretrained(
                 draft,
-                revision=revision,
                 torch_dtype=get_dtype(dtype),
+                revision=revision,
                 trust_remote_code=trust_remote_code,
                 **model_kwargs,
             )
@@ -601,60 +551,9 @@ class SDLM(TemplateLM):
         return None
 
     def _detect_batch_size(self, requests=None, pos: int = 0):
-        if requests:
-            _, context_enc, continuation_enc = requests[pos]
-            max_length = len(
-                (context_enc + continuation_enc)[-(self.max_length + 1) :][:-1]
-            )
-            max_context_enc = len(context_enc[-(self.max_length + 1) :])
-            max_cont_enc = len(continuation_enc[-(self.max_length + 1) :])
-        else:
-            max_length = self.max_length
-
-        # if OOM, then halves batch_size and tries again
-        @find_executable_batch_size(starting_batch_size=self.max_batch_size)
-        def forward_batch(batch_size):
-            if self.AUTO_MODEL_CLASS == transformers.AutoModelForSeq2SeqLM:
-                length = max(max_context_enc, max_cont_enc)
-                batched_conts = torch.ones(
-                    (batch_size, length), device=self.device
-                ).long()
-                test_batch = torch.ones((batch_size, length), device=self.device).long()
-                call_kwargs = {
-                    "attn_mask": test_batch,
-                    "labels": batched_conts,
-                }
-            else:
-                call_kwargs = {}
-                test_batch = torch.ones(
-                    (batch_size, max_length), device=self.device
-                ).long()
-            for _ in range(5):
-                out = F.log_softmax(self._model_call(test_batch, **call_kwargs), dim=-1)  # noqa: F841
-
-            return batch_size
-
-        try:
-            batch_size = forward_batch()
-        except RuntimeError as e:
-            if "No executable batch size found" in str(e):
-                batch_size = 1
-            else:
-                raise
-
-        if self.world_size > 1:
-            # if multi-GPU, always take minimum over all selected batch sizes
-            max_rnk_bs = torch.tensor([batch_size], device=self.device)
-            gathered = (
-                self.accelerator.gather(max_rnk_bs).cpu().detach().numpy().tolist()
-            )
-            batch_size = min(gathered)
-            clear_torch_cache()
-            return batch_size
-
-        clear_torch_cache()
-        return batch_size
-
+         
+        raise NotImplementedError
+        
     def tok_encode(
         self, string: str, left_truncate_len=None, add_special_tokens=None
     ) -> List[int]:
@@ -718,101 +617,17 @@ class SDLM(TemplateLM):
     def loglikelihood(
         self, requests, disable_tqdm: bool = False
     ) -> List[Tuple[float, bool]]:
-        new_reqs = []
-        for context, continuation in [req.args for req in requests]:
-            if context == "":
-                # BOS or EOS as context
-                context_enc, continuation_enc = (
-                    [self.prefix_token_id],
-                    self.tok_encode(continuation),
-                )
-            else:
-                context_enc, continuation_enc = self._encode_pair(context, continuation)
-
-            new_reqs.append(((context, continuation), context_enc, continuation_enc))
-
-        
-        return self._loglikelihood_tokens(new_reqs, disable_tqdm=disable_tqdm)
+        pass
     
     def _select_cont_toks(
         self, logits: torch.Tensor, contlen: int = None, inplen: int = None
     ) -> torch.Tensor:
-        if self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM:
-            assert (
-                contlen and inplen
-            ), "Must pass input len and cont. len to select scored logits for causal LM"
-            # discard right-padding.
-            # also discard the input/context tokens. we'll only score continuations.
-            logits = logits[inplen - contlen : inplen]
-        elif self.AUTO_MODEL_CLASS == transformers.AutoModelForSeq2SeqLM:
-            assert (
-                contlen and not inplen
-            ), "Selecting scored logits for Seq2SeqLM requires only cont. len"
-            # only discard right-padding.
-            # the logits input to this fn only contain decoder-side tokens.
-            logits = logits[:contlen]
-
-        return logits
+        pass
 
     def loglikelihood_rolling(
         self, requests: List[Instance], disable_tqdm: bool = False
     ) -> List[float]:
-        loglikelihoods = []
-        
-        adaptive_batch_size = None
-        if self.batch_size == "auto":
-            # using rolling window with maximum context
-            print("Passed argument batch_size = auto. Detecting largest batch size")
-            batch_size = self._detect_batch_size()
-            print(f"Determined Largest batch size: {batch_size}")
-            adaptive_batch_size = batch_size
-
-        for (string,) in tqdm(
-            [req.args for req in requests], disable=(disable_tqdm or (self.rank != 0))
-        ):
-            rolling_token_windows = list(
-                map(
-                    utils.make_disjoint_window,
-                    utils.get_rolling_token_windows(
-                        token_list=self.tok_encode(string),
-                        prefix_token=self.prefix_token_id,
-                        max_seq_len=self.max_length,
-                        context_len=1,
-                    ),
-                )
-            )
-
-            # TODO: Right now, we pass single EOT token to the Encoder and the full context to the decoder, in seq2seq case
-            rolling_token_windows = [(None,) + x for x in rolling_token_windows]
-
-            pad_amnt = 0
-            if self.world_size > 1:
-                # We pad out the external document-level iterator so the inner iterator doesn't hang
-                mytensor = torch.tensor(len(rolling_token_windows), device=self.device)
-                gathered = (
-                    self.accelerator.gather(mytensor).cpu().detach().numpy().tolist()
-                )
-
-                pad_amnt = max(gathered) - gathered[self.rank]
-                if pad_amnt > 0:
-                    rolling_token_windows += pad_amnt * [rolling_token_windows[0]]
-
-            string_nll = self._loglikelihood_tokens(
-                requests=rolling_token_windows,
-                disable_tqdm=True,
-                override_bs=adaptive_batch_size,
-            )
-
-            if (self.world_size > 1) and (pad_amnt > 0):
-                string_nll = [x[0] for x in string_nll[:-pad_amnt]]
-            else:
-                # discard is_greedy
-                string_nll = [x[0] for x in string_nll]
-
-            string_nll = sum(string_nll)
-            loglikelihoods.append(string_nll)
-
-        return loglikelihoods
+        pass
 
     def _batch_scheduler(self, pos, n_reordered_requests):
         sched = pos // int(len(n_reordered_requests) / self.batch_schedule)
@@ -831,30 +646,7 @@ class SDLM(TemplateLM):
         print(f"Determined largest batch size: {self.batch_sizes[sched]}")
         return self.batch_sizes[sched]
     def _model_call(self, inps, attn_mask=None, labels=None):
-        """
-        :param inps: torch.Tensor
-            A torch tensor of shape [batch, (sequence_ctx + sequence_cont)] or of shape
-            [batch, sequence_ctx]. the size of sequence may vary from call to call
-        :param attn_mask: torch.Tensor, optional
-            A torch tensor of shape [batch, (sequence_ctx + sequence_cont)]. Only passed
-            (and must be passed) if self.AUTO_MODEL_CLASS is transformers.AutoModelForSeq2SeqLM
-        :param labels: torch.Tensor, optional
-            A torch tensor of shape [batch, (sequence_ctx + sequence_cont)]. Only passed
-            (and must be passed) if self.AUTO_MODEL_CLASS is transformers.AutoModelForSeq2SeqLM
-        :return
-            A torch tensor of shape [batch, sequence, vocab] with the
-        logits returned from the model's decoder
-        """
-        with torch.no_grad():
-            if attn_mask is not None or labels is not None:
-                assert attn_mask is not None and labels is not None
-                assert self.AUTO_MODEL_CLASS == transformers.AutoModelForSeq2SeqLM
-                return self.model(
-                    input_ids=inps, attention_mask=attn_mask, labels=labels
-                ).logits
-            else:
-                assert self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM
-                return self.model(inps).logits
+       pass
     
     def _loglikelihood_tokens(
         self,
@@ -862,181 +654,13 @@ class SDLM(TemplateLM):
         disable_tqdm: bool = False,
         override_bs: int = None,
     ) -> List[Tuple[float, bool]]:
-        # TODO: implement some kind of efficient-request-middleware that lumps together requests with the same context
-        res = []
-
-        def _collate(req: Tuple[Tuple[str, str], List[int], List[int]]):
-            """Defines the key for the sorted method"""
-            # the negative sign on len(toks) sorts descending - this has a few advantages:
-            # - time estimates will always be over not underestimates, which is more useful for planning
-            # - to know the size of a batch when going through the list, you know the first one is always the batch
-            #   padded context length. this is useful to simplify the batching logic and more importantly to make
-            #   automatic adaptive batches much much easier to implement
-            # - any OOMs will happen right away rather than near the end
-
-            toks = req[1] + req[2]
-            return -len(toks), tuple(toks)
-
-        def _lookup_one_token_cont(req: Tuple[Tuple[str, str], List[int], List[int]]):
-            """Defines the key to group and lookup one-token continuations"""
-            # Use with group_by="contexts" (optional)"
-            # allows for the creation of a lookup, so we can reuse logits in case of one-token continuations.
-            # speeds up some multiple-choice tasks proportionally to the number of choices.
-            # groups requests by context+continuation[:-1] and infer on one request/group.
-            return req[-2] + req[-1][:-1]
-
-        re_ord = Collator(
-            requests,
-            sort_fn=_collate,
-            group_by="contexts"
-            if self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM
-            and self.logits_cache
-            else None,
-            group_fn=_lookup_one_token_cont,
-        )
-        
-        # automatic (variable) batch size detection for vectorization
-        # pull longest context sample from request
-        n_reordered_requests = len(re_ord)
-        batch_size = 1
-        # batch_fn = (
-        #     self._batch_scheduler
-        #     if self.batch_size == "auto"
-        #     and n_reordered_requests > 0
-        #     and not override_bs
-        #     else None
-        # )
-
-        chunks = re_ord.get_batched(n=batch_size, batch_fn=None)
-        
-        pbar = tqdm(
-            total=len(requests),
-            disable=(disable_tqdm or (self.rank != 0)),
-            desc="Running loglikelihood requests",
-        )
-        for chunk in chunks:
-            inps = []
-            cont_toks_list = []
-            inplens = []
-
-            conts = []
-            encoder_attns = []
-            
-            padding_len_inp = None
-            padding_len_cont = None
-            # because vectorizing is annoying, we first convert each (context, continuation) pair to padded
-            # tensors, then we pack them together into a batch, call the model, and then pick it all apart
-            # again because vectorizing is annoying
-
-            for _, context_enc, continuation_enc in chunk:
-                # sanity check
-                assert len(context_enc) > 0
-                assert len(continuation_enc) > 0
-                assert len(continuation_enc) <= self.max_length
-
-                # how this all works (illustrated on a causal decoder-only setup):
-                #          CTX      CONT
-                # inp    0 1 2 3|4 5 6 7 8 9   <- last token is deleted by inp[:, :-1]
-                # model  \               \
-                # logits   1 2 3|4 5 6 7 8 9   <- the ctx half gets tossed out by the
-                # cont_toks      4 5 6 7 8 9      [:, -len(continuation_enc):, :self.vocab_size] slice
-
-                # when too long to fit in context, truncate from the left
-                if self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM:
-                    inp = torch.tensor(
-                        (context_enc + continuation_enc)[-(self.max_length + 1) :][:-1],
-                        dtype=torch.long,
-                        device=self.device,
-                    )
-                    (inplen,) = inp.shape
-                
-                padding_len_inp = (
-                    max(padding_len_inp, inplen)
-                    if padding_len_inp is not None
-                    else inplen
-                )
-
-                inps.append(inp)  # [1, inp_length]
-                cont_toks_list.append(continuation_enc)
-                inplens.append(inplen)
-
-            # create encoder attn mask and batched conts, if seq2seq
-            call_kwargs = {}
-            if self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM:
-                batched_inps = pad_and_concat(
-                    padding_len_inp, inps, padding_side="right"
-                )  # [batch, padding_len_inp]
-            
-            multi_logits = F.log_softmax(
-                self._model_call(batched_inps, **call_kwargs), dim=-1
-            )  # [batch, padding_length (inp or cont), vocab]
-            acceptance_rate, num_samples = self.specdec(batched_inps)
-            for (request_str, ctx_tokens, _), logits, inplen, cont_toks in zip(
-                chunk, multi_logits, inplens, cont_toks_list
-            ):  
-                
-                # Slice to original seq length
-                contlen = len(cont_toks)
-                # take only logits in the continuation
-                # (discard context toks if decoder-only ; discard right-padding)
-                # also discards + checks for "virtual tokens" in the causal LM's input window
-                # from prompt/prefix tuning tokens, if applicable
-                ctx_len = (
-                    inplen + (logits.shape[0] - padding_len_inp)
-                    if self.AUTO_MODEL_CLASS == transformers.AutoModelForCausalLM
-                    else None
-                )
-                logits = self._select_cont_toks(logits, contlen=contlen, inplen=ctx_len)
-                logits = logits.unsqueeze(0)  # [1, seq, vocab]
-                
-                # Check if per-token argmax is exactly equal to continuation
-                greedy_tokens = logits.argmax(dim=-1)
-               
-                # check for one-token continuation cache hits.
-                # noop in case group_by != "contexts" or no cache hit and returns the
-                # original args. Otherwise, expands the logits batch dimension and yields each
-                # batch along with matching continuation tokens and prompt strings.
-                # logits -> [1, seq, vocab]
-                for idx, (request_str, cont_toks, logits) in enumerate(re_ord.get_cache(
-                    req_str=request_str,
-                    cxt_toks=ctx_tokens,
-                    cont_toks=cont_toks,
-                    logits=logits,
-                )): 
-                    
-                    cont_toks = torch.tensor(
-                        cont_toks, dtype=torch.long, device=self.device
-                    ).unsqueeze(0)  # [1, seq]
-                    max_equal = (greedy_tokens == cont_toks).all()
-
-                    # Obtain log-probs at the corresponding continuation token indices
-                    # last_token_slice = logits[:, -1, :].squeeze(0).tolist()
-                    logits = torch.gather(logits, 2, cont_toks.unsqueeze(-1)).squeeze(
-                        -1
-                    )  # [1, seq]
-
-                    # Answer: (log prob, is-exact-match)
-                    answer = (float(logits.sum()), bool(max_equal))
-                    if idx > 0:
-                        res.append({
-                            "alpha": 0,
-                            "num_samples": 0
-                        })
-                    else:
-                        res.append(
-                            {
-                                "alpha": acceptance_rate.item(),
-                                "num_samples": num_samples
-                            }
-                        )
-                    self.cache_hook.add_partial("loglikelihood", request_str, answer)
-                    pbar.update(1)
-
-        pbar.close()
-        res = re_ord.get_original(res)
-        return res
+        pass
 
     def generate_until(
+        self, requests: List[Instance], disable_tqdm: bool = False
+    ) -> List[str]:
+        pass
+    def specdec_eval(
         self, requests: List[Instance], disable_tqdm: bool = False
     ) -> List[str]:
         res = []
@@ -1051,11 +675,12 @@ class SDLM(TemplateLM):
             # - any OOMs will happen right away rather than near the end
             toks = self.tok_encode(req[0])
             return -len(toks), req[0]
-
+        
+        
         pbar = tqdm(
             total=len(requests),
             disable=(disable_tqdm or (self.rank != 0)),
-            desc="Running generate_until requests",
+            desc="Running specdec_eval requests",
         )
         
         batch_size = 1
@@ -1065,18 +690,17 @@ class SDLM(TemplateLM):
         re_ords = Collator(
             [reg.args for reg in requests],
             sort_fn=_collate,
-            group_by="gen_kwargs",
             group_fn=lambda x: x[1],
         )
         chunks = re_ords.get_batched(n=batch_size, batch_fn=batch_fn)
         
         for chunk in chunks:
-            contexts, all_gen_kwargs = zip(*chunk)
+            contexts, _ = zip(*chunk)
             
             max_gen_toks = self.max_gen_toks
             max_ctx_len = self.max_length - max_gen_toks
             
-            context_enc, attn_masks = self.tok_batch_encode(
+            context_enc, _ = self.tok_batch_encode(
                 contexts,
                 left_truncate_len=max_ctx_len,
                 truncation=self.truncation,
@@ -1096,10 +720,11 @@ class SDLM(TemplateLM):
         pbar.close()
 
         return res
-    
+
     def specdec(self, context_enc: torch.LongTensor):
         
         input_ids = context_enc.to(self.device)
+        outputs = self._model(input_ids=input_ids)
         initial_len = input_ids.shape[1]
         eos_tokens = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id, self.tokenizer.bos_token_id]
         past_key_values = None

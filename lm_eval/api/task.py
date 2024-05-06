@@ -46,6 +46,7 @@ ALL_OUTPUT_TYPES = [
     "multiple_choice",
     "loglikelihood_rolling",
     "generate_until",
+    "specdec_eval",
 ]
 
 eval_logger = logging.getLogger("lm-eval")
@@ -98,7 +99,7 @@ class TaskConfig(dict):
 
     def __post_init__(self) -> None:
         if self.generation_kwargs is not None:
-            if self.output_type != "generate_until":
+            if self.output_type not in ["generate_until","specdec_eval"]:
                 eval_logger.warning(
                     f"[{self.task}] passed `generation_kwargs`, but not using `output_type: generate_until`!"
                 )
@@ -1161,6 +1162,8 @@ class ConfigurableTask(Task):
         elif self.OUTPUT_TYPE == "generate_until":
             arguments = (ctx, deepcopy(self.config.generation_kwargs))
 
+        elif self.OUTPUT_TYPE == "specdec_eval":
+            arguments = (ctx, deepcopy(self.config.generation_kwargs))
         return Instance(
             request_type=self.OUTPUT_TYPE, doc=doc, arguments=arguments, idx=0, **kwargs
         )
