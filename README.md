@@ -109,7 +109,7 @@ sd (pretrained=meta-llama/Llama-2-7b-hf,draft=JackFram/llama-160m,temperature=0.
 - [ ] CUDA_VISIBLE_DEVICES must be assigned.
 - [ ] Batch size must be 1.
 - [ ] Tensor parallelism is not supported. When CUDA_VISIBLE_DEVICES is assigned with more than 1 GPU, pipeline parallelism is activated.
-- [ ] Multiple drafts are sampled with "Sampling without replacement" as described in [Sequoia](https://infini-ai-lab.github.io/Sequoia-Page/)
+- [ ] Multiple drafts are sampled with "Sampling without replacement" as described in [Sequoia](https://infini-ai-lab.github.io/Sequoia-Page/).
 
 
 
