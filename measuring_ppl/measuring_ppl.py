@@ -17,7 +17,6 @@ from torch import nn
 from torch.utils.data import random_split 
 from packaging import version 
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union 
-from itertools import chain 
 seed_value = 42 # Set a global seed for reproducibility 
 from transformers import set_seed 
 set_seed(seed_value) 
@@ -86,6 +85,7 @@ parser = argparse.ArgumentParser(
                     epilog='Text at the bottom of help') 
 
 parser.add_argument("--loading_from_checkpoint", type = str, default = None) 
+parser.add_argument("--max_length", type = int, default = 256) 
 parser.add_argument("--batch_size", type = int, default = 8) 
 parser.add_argument("--dataset_name", type = str, choices = ["c4", "OpenWebText", "wikitext", "Wikipedia"], default = None) 
 # TODO: add the statistics of the Llama-2-7B model 
@@ -94,14 +94,12 @@ args = parser.parse_args()
 
 ##### Setting the directories ##### 
 if "lovelace" in hostname: 
+    dir_models = "/home/yangzho6/model_checkpoints/" 
     dir_sdata = "/home/yangzho6/slimpajama/SlimPajama-627B/test/chunk1/" 
     dir_c4 = "/home/yangzho6/c4_parts/downloads/" # for C4 dataset, I used the jsonl files to load in the data 
 else: 
     dir_models = "/fsx-storygen/beidic/yang/model_checkpoints/" 
     dir_sdata = "/fsx-storygen/beidic/yang/c4llm_synthesized/" 
-
-model_name = args.model_name 
-text_eval = "evaluation_printout_{}_{}_{}.txt".format(commit_hash, hash_of_time, model_name) 
 
 class CustomTrainer(Trainer): 
     # Sometimes custom models need to have its own forward function 
@@ -118,42 +116,30 @@ else:
     print("We now use eos_token as pad token") 
 tokenizer.padding_side = "left" 
 
-model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", cache_dir = dir_models) 
+if args.loading_from_checkpoint is not None: 
+    model = AutoModelForCausalLM.from_pretrained(args.loading_from_checkpoint).to(torch.bfloat16).to(torch_device) 
+else:   
+    model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", cache_dir = dir_models).to(torch.bfloat16).to(torch_device) 
 
 datacollator = DataCollatorForLanguageModeling(tokenizer = tokenizer, mlm = False) 
 training_args = TrainingArguments(
     output_dir = dir_models, 
-    per_device_eval_batch_size = 8, 
+    per_device_eval_batch_size = args.batch_size, 
     do_train = False, 
     do_eval = True, 
     label_names = ["labels"], # this argument is optional for default models, but vital for custom models 
 ) 
 
+# Use the CustomTrainer class if you have a custom model 
 trainer = Trainer(
     model = model, 
     args = training_args, 
     data_collator = datacollator, 
 ) 
 
-def get_dataset(datasetname): 
-    if datasetname == "c4llm_synthesized": 
-        # datasetnew = load_dataset('json', data_files = dfiles, split = "train[:10000]") 
+def get_dataset(datasetname, max_length = 256, tokenizer = None): 
+    if datasetname == "c4": 
         dfiles = [] 
-        if "lovelace" in hostname: 
-            # filename = "c4synthesized_file1_kernel7_0.json" 
-            filename = "c4synthesized_file1_1_0.json" 
-            # filename = "c4synthesized_file11_1_0.json" 
-            # filename = "c4synthesized_file1_kernel7.json" 
-            # dfiles.append(dir_c4llmsynthesized + "{}/".format("tinyllama") + filename) 
-            dfiles.append(dir_c4llmsynthesized + filename) 
-            datasetnew = load_dataset("json", data_files = dfiles, split = "train[:10000]") 
-        else: 
-            filename = "c4synthesized_file1_kernel7_{}_combined.json".format(7) 
-            dfiles.append(dir_c4llmsynthesized + "{}_topk{}/".format("tinyllama", "na") + filename) 
-            datasetnew = load_dataset("json", data_files = dfiles, split = "train[:10000]") 
-    elif datasetname == "c4": 
-        dfiles = [] 
-        # filename = "c4_file1.json" 
         filename = "c4_file150.json" 
         dfiles.append(dir_c4 + filename) 
         datasetnew = load_dataset("json", data_files = dfiles, split = "train[:10000]") 
@@ -165,11 +151,15 @@ def get_dataset(datasetname):
         datasetnew = load_dataset("Skylion007/openwebtext", split = "train[:10000]") 
     elif datasetname == "xsum": # we need to use special processing for this dataset 
         datasetnew = load_dataset("xsum", split = "test[:10000]") 
+    elif datasetname == "wikitext": 
+        datasetnew = load_dataset("wikitext", "wikitext-103-raw-v1", split = "test") 
+    elif datasetname == "Wikipedia": 
+        datasetnew = load_dataset("wikipedia", "20220301.en", split="train[:10000]") 
     else: 
         raise ValueError("dataset_name is not recognized") 
 
     def encode_with_truncationspecialized(examples): 
-        tokdictionary = tokenizer(examples['text'][100000 : 100000 + 3000], padding = "max_length", max_length = 260 if args.kernel_size == 7 else 259, 
+        tokdictionary = tokenizer(examples['text'][100000 : 100000 + 3000], padding = "max_length", max_length = max_length, 
                         return_attention_mask = True, return_tensors = "pt", truncation = True, 
                         add_special_tokens = True) 
         # tokdictionary = tokenizer(examples['text'], padding = "max_length", max_length = 260, 
@@ -184,7 +174,7 @@ def get_dataset(datasetname):
         # tokdictionary = tokenizer(examples['text'][100000 : 100000 + 3000], padding = "max_length", max_length = 260, 
         #                  return_attention_mask = True, return_tensors = "pt", truncation = True, 
         #                  add_special_tokens = True) 
-        tokdictionary = tokenizer(examples['text'], padding = "max_length", max_length = 260 if args.kernel_size == 7 else 259, 
+        tokdictionary = tokenizer(examples['text'], padding = "max_length", max_length = max_length, 
                                 return_attention_mask = True, return_tensors = "pt", truncation = True, 
                                 add_special_tokens = True) 
         newdictionary = {} 
@@ -193,7 +183,7 @@ def get_dataset(datasetname):
         return newdictionary 
     
     def encode_text_summary(examples): # cnn_dailymail uses "article" 
-        tokdictionary = tokenizer(examples['article'], padding = "max_length", max_length = 260 if args.kernel_size == 7 else 259, 
+        tokdictionary = tokenizer(examples['article'], padding = "max_length", max_length = max_length, 
                                 return_attention_mask = True, return_tensors = "pt", truncation = True, 
                                 add_special_tokens = True) 
         newdictionary = {} 
@@ -202,7 +192,16 @@ def get_dataset(datasetname):
         return newdictionary 
     
     def encode_text_summary_xsum(examples): # xsum uses "document" 
-        tokdictionary = tokenizer(examples["document"], padding = "max_length", max_length = 260 if args.kernel_size == 7 else 259, 
+        tokdictionary = tokenizer(examples["document"], padding = "max_length", max_length = max_length, 
+                                return_attention_mask = True, return_tensors = "pt", truncation = True, 
+                                add_special_tokens = True) 
+        newdictionary = {} 
+        newdictionary['input_ids'] = tokdictionary['input_ids'].squeeze(0) 
+        newdictionary['attention_mask'] = tokdictionary['attention_mask'].squeeze(0) 
+        return newdictionary 
+    
+    def encode_text_wikirelated(examples): 
+        tokdictionary = tokenizer(examples["text"], padding = "max_length", max_length = max_length, 
                                 return_attention_mask = True, return_tensors = "pt", truncation = True, 
                                 add_special_tokens = True) 
         newdictionary = {} 
@@ -224,6 +223,9 @@ def get_dataset(datasetname):
     elif datasetname == "cnn_dailymail": 
         datasetnew = datasetnew.map(encode_text_summary, num_proc = 8) 
         datasetnew.set_format(type = "torch", columns = ["input_ids", "attention_mask", "article"]) 
+    elif datasetname == "wikitext" or datasetname == "Wikipedia": 
+        datasetnew = datasetnew.map(encode_text_wikirelated, num_proc = 8) 
+        datasetnew.set_format(type = "torch", columns = ["input_ids", "attention_mask", "text"]) 
     else: 
         datasetnew = datasetnew.map(encode_with_truncation, num_proc = 8) 
         datasetnew.set_format(type = "torch", columns = ["input_ids", "attention_mask", "text"]) 
@@ -231,16 +233,27 @@ def get_dataset(datasetname):
     # datasetnew = datasetnew.map(unflatten_list_func, num_proc = 8) 
     return datasetnew 
 
-datasetlist = ["c4", "OpenWebText", "wikitext", "Wikipedia"] 
+datasetlist = ["c4", "openwebtext", "wikitext", "Wikipedia"] 
 ce_loss_list = [] 
 ppl_list = [] 
 
 for datasetname in datasetlist: 
-    eval_dataset = get_dataset(datasetname) 
+    if args.dataset_name is None: 
+        eval_dataset = get_dataset(datasetname, max_length = args.max_length, tokenizer = tokenizer) 
+    else: 
+        if datasetname != args.dataset_name: 
+            continue 
+        eval_dataset = get_dataset(datasetname, max_length = args.max_length, tokenizer = tokenizer) 
     results = trainer.evaluate(eval_dataset = eval_dataset) 
     ce_loss_list.append(results["eval_loss"]) 
-    ppl_list.append(results["eval_perplexity"]) 
+    if "eval_perplexity" in results: 
+        ppl_list.append(results["eval_perplexity"]) 
+    else: 
+        ppl_list.append(np.exp(results["eval_loss"]).item()) 
     print(results) 
 
-for idx, datasetname in enumerate(datasetlist): 
-    print("{}: ce_loss is {}, ppl is {}".format(datasetname, ce_loss_list[idx], ppl_list[idx])) 
+if args.dataset_name is None: 
+    for idx, datasetname in enumerate(datasetlist): 
+        print("{}: ce_loss is {}, ppl is {}".format(datasetname, ce_loss_list[idx], ppl_list[idx])) 
+else: 
+    print("ce_loss is {}, ppl is {}".format(ce_loss_list[0], ppl_list[0])) 
