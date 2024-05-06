@@ -1,0 +1,29 @@
+task: xsum
+dataset_path: xsum
+training_split: train
+validation_split: validation
+test_split: test
+fewshot_split: train
+output_type: generate_until
+doc_to_text: "Article: {{document}}\nSummary:"
+doc_to_target: "{{summary}}"
+metric_list:
+  - metric: rouge1
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge2
+    aggregation: mean
+    higher_is_better: true
+  - metric: rougeL
+    aggregation: mean
+    higher_is_better: true
+num_fewshot: 3
+generation_kwargs:
+  until:
+    - "Question:"
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+  max_new_tokens: 64
+  
