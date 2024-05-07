@@ -42,6 +42,7 @@ do
 done
 
 # Calculating pass@k with k=1,10,100
+python eval_humaneval.py --prediction_dir ./output_dir
 ```
 
 n = NUM_ITERATIONS * batch_size * num_return_sequences, where n is used to estimate pass@k as in the Codex paper.
