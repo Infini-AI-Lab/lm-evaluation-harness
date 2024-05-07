@@ -2,7 +2,7 @@
 
 ## Usage 
 
-Before using the script, please check whether there are essential packages that are missing. You can simply do that by running the following line of code `pip install requirements.txt`. 
+Before using the script, please check whether there are essential packages that are missing. You can simply do that by running the following line of code `pip install -r requirements.txt`. 
 
 Please run `python measuring_ppl.py --loading_from_checkpoint <arg1> --max_length <arg2> --batch_size <arg3> --dataset_name <arg4>` 
 
