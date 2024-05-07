@@ -7,6 +7,10 @@
 `topk`: topk used for recall calculation. </br>
 `layerwise_topk_analysis`: restricts error propagation from bottom layer. approximations.
 
+example cmd:
+
+`python3 scripts/check_retrieved_perf.py --pretrained EleutherAI/pythia-70m  --model_type ret-approx-hf --tasks wikitext --batch 4 --limit 10 --topk 10 --layerwise_topk_analysis`
+
 ### Testing New Model
 To test a new model, create a wrapper around the model using the parent class `lm_eval.models.retrieval_lm.RetApproxLM`
 
