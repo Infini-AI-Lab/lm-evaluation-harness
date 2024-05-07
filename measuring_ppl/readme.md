@@ -2,7 +2,11 @@
 
 ## Usage 
 
+Before using the script, please check whether there are essential packages that are missing. You can simply do that by running the following line of code `pip install requirements.txt`. 
+
 Please run `python measuring_ppl.py --loading_from_checkpoint <arg1> --max_length <arg2> --batch_size <arg3> --dataset_name <arg4>` 
+
+Currently, the code defaultly support Llama2 7B. Please modify inside the mearing_ppl.py on the models you want to use. 
 ##### Arguments 
 
 - loading_from_checkpoint: path to the checkpoint of the model (default is the pretrained checkpoint) 
