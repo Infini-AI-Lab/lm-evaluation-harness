@@ -3,25 +3,15 @@ import torch
 import argparse 
 
 ##### the below packages are for utility functions ##### 
-import datasets 
 from datasets import load_dataset 
 import sys 
 import os 
-from tqdm import tqdm 
-import torch.nn.functional as F 
-import time 
 import numpy as np 
-import inspect 
-from termcolor import colored 
-from torch import nn 
-from torch.utils.data import random_split 
-from packaging import version 
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union 
 seed_value = 42 # Set a global seed for reproducibility 
 from transformers import set_seed 
 set_seed(seed_value) 
 import subprocess 
-import warnings 
 
 ##### The following code is optional ##### 
 current_dir = os.path.dirname(__file__) 
@@ -37,8 +27,6 @@ from transformers import LlamaTokenizer
 from transformers import LlamaForCausalLM 
 from transformers import Trainer, TrainingArguments 
 from transformers import DataCollatorForLanguageModeling 
-from transformers.generation.utils import GenerationConfig 
-from transformers import BitsAndBytesConfig 
 
 ##### Setting the device ##### 
 rank = os.environ.get("RANK") 
@@ -46,13 +34,6 @@ print("the rank is {}".format(rank))
 if rank is None: 
     rank = 0 
 torch_device = 'cuda:{}'.format(rank) if torch.cuda.is_available() else 'cpu' 
-
-##### The default wandb is enabled ##### 
-try:
-    import wandb
-    has_wandb = True
-except ImportError:
-    has_wandb = False 
 
 ##### Getting the commit hash (Optional) ##### 
 commit_hash = None 
@@ -95,11 +76,10 @@ args = parser.parse_args()
 ##### Setting the directories ##### 
 if "lovelace" in hostname: 
     dir_models = "/home/yangzho6/model_checkpoints/" 
-    dir_sdata = "/home/yangzho6/slimpajama/SlimPajama-627B/test/chunk1/" 
     dir_c4 = "/home/yangzho6/c4_parts/downloads/" # for C4 dataset, I used the jsonl files to load in the data 
 else: 
     dir_models = "/fsx-storygen/beidic/yang/model_checkpoints/" 
-    dir_sdata = "/fsx-storygen/beidic/yang/c4llm_synthesized/" 
+    dir_c4 = "/fsx-storygen/beidic/hanshi/data/c4/" 
 
 class CustomTrainer(Trainer): 
     # Sometimes custom models need to have its own forward function 
