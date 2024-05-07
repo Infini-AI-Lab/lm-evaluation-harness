@@ -1,5 +1,4 @@
-python==3.9
-pytorch-cuda==12.1
+torch==12.1
 transformers
 datasets
 SentencePiece
