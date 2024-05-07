@@ -12,6 +12,7 @@ To test a new model, create a wrapper around the model using the parent class `l
 
 The new model's attention block is assumed to have a modified `_attn` function.<br />
 **NOTE:** The modified function should return `approx_attn_output, approx_attn_scores(default=None), topk_ids` tuple.<br />
+Replace `module._approx_attn = types.MethodType(topk_attn, module)` by `module._approx_attn = MethodType(module._attn, module)` as needed. </br>
 **TODO:** Support for `FlashAttention` can be made if required.
 
 ### Sample output

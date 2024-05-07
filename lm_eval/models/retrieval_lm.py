@@ -217,7 +217,7 @@ class RetApproxLM(HFLM):
             if hasattr(module, "_attn"):
                 orig_attn = module._attn
                 module._attn = types.MethodType(retrieval_attn, module)
-                module._approx_attn = types.MethodType(topk_attn, module)
+                module._approx_attn = types.MethodType(topk_attn, module)   # replace this by orig_attn for your custom model
                 module.gt_ids = []
                 module.ret_ids = []
                 module.err_norm = []
