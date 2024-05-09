@@ -571,7 +571,8 @@ class HFLM(TemplateLM):
             # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize2setting0checkpoint-1000" 
             # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallmodelkernelsize2setting0oldcheckpoint-3000" 
             # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize4setting0checkpoint-1000" 
-            loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllama_setting3_kernelsize2_2_checkpoint-1900" 
+            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllama_setting3_kernelsize2_2_checkpoint-1900" 
+            loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallkernelsize4setting0checkpoint-3000" 
             kernel_size = 1 
             experiment_setting = "setting3" 
             
