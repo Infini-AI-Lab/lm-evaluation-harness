@@ -540,7 +540,9 @@ class HFLM(TemplateLM):
                     if model_kwargs.get("bnb_4bit_compute_dtype", None):
                         model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
                             model_kwargs["bnb_4bit_compute_dtype"]
-                        )
+                        ) 
+            
+            print("pretrained: ", pretrained) 
             self._model = self.AUTO_MODEL_CLASS.from_pretrained(
                 pretrained,
                 revision=revision,
