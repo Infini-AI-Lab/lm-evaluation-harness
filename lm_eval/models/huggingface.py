@@ -575,7 +575,6 @@ class HFLM(TemplateLM):
             kernel_size = 2 
             experiment_setting = "setting0" 
             
-            pretrained = pretrained[1:] 
             self._model = LlamaWeirdLargeTest.from_pretrained(loadingfromcheckpoint) 
             self._model.set_sliding_window_length(kernel_size) 
             self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
