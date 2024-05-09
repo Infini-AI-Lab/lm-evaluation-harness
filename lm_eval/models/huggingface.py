@@ -564,6 +564,8 @@ class HFLM(TemplateLM):
             # large_model.addonsmallmodel.config.pad_token_id = tokenizer.pad_token_id 
             # large_model.model.eval() 
             # large_model.addonsmallmodel.eval() 
+            print("loading from checkpoint .......") 
+            
             loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize2setting0checkpoint-1000" 
             kernel_size = 2 
             experiment_setting = "setting0" 
