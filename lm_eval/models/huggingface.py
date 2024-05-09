@@ -566,7 +566,8 @@ class HFLM(TemplateLM):
             # large_model.addonsmallmodel.eval() 
             print("loading from checkpoint .......") 
             
-            loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize2setting0checkpoint-1000" 
+            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize2setting0checkpoint-1000" 
+            loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallmodelkernelsize2setting0oldcheckpoint-3000" 
             kernel_size = 2 
             experiment_setting = "setting0" 
             self._model = LlamaWeirdLargeTest.from_pretrained(loadingfromcheckpoint) 
