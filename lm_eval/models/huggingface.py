@@ -530,25 +530,25 @@ class HFLM(TemplateLM):
                 model_kwargs.update({"device_map": {"": str(self.device)}})
 
         if not autogptq: 
-            # if model_kwargs.get("load_in_4bit", None):
-            #     assert (
-            #         transformers.__version__ >= "4.30.0"
-            #     ), "load_in_4bit requires transformers >= 4.30.0"
-            # if transformers.__version__ >= "4.30.0":
-            #     if model_kwargs.get("load_in_4bit", None):
-            #         if model_kwargs.get("bnb_4bit_compute_dtype", None):
-            #             model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
-            #                 model_kwargs["bnb_4bit_compute_dtype"]
-            #             ) 
+            if model_kwargs.get("load_in_4bit", None):
+                assert (
+                    transformers.__version__ >= "4.30.0"
+                ), "load_in_4bit requires transformers >= 4.30.0"
+            if transformers.__version__ >= "4.30.0":
+                if model_kwargs.get("load_in_4bit", None):
+                    if model_kwargs.get("bnb_4bit_compute_dtype", None):
+                        model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
+                            model_kwargs["bnb_4bit_compute_dtype"]
+                        ) 
             
-            # # print("pretrained: ", pretrained) 
-            # self._model = self.AUTO_MODEL_CLASS.from_pretrained(
-            #     pretrained,
-            #     revision=revision,
-            #     torch_dtype=get_dtype(dtype),
-            #     trust_remote_code=trust_remote_code,
-            #     **model_kwargs,
-            # ) 
+            # print("pretrained: ", pretrained) 
+            self._model = self.AUTO_MODEL_CLASS.from_pretrained(
+                pretrained,
+                revision=revision,
+                torch_dtype=get_dtype(dtype),
+                trust_remote_code=trust_remote_code,
+                **model_kwargs,
+            ) 
             
             # else: 
             from transformers.models.llama.modeling_llama import LlamaWeirdLargeTest 
@@ -593,23 +593,23 @@ class HFLM(TemplateLM):
             # self._model.model.eval() 
             # self._model.addonsmallmodel.eval() 
             
-            self._model = LlamaWeirdLargeRecoveringModeOn.from_pretrained("TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T").to(torch.bfloat16) 
-            self._model.set_sliding_window_length(kernel_size) 
-            small_model_state_dict = SimpleSmallModel.from_pretrained("YangZhoumill/llama_160m_deciphering_tinyllama_setting0_01da4cb_hf", target_model_dim = 2048).state_dict() 
-            self._model.set_addonsmallmodel_statedict(small_model_state_dict) 
-            self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
-            self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
-            self._model.to(torch.bfloat16) 
-            self._model.set_inference_setting(experiment_setting) 
-            self._model.set_walpha(0.5) 
-            self._model.set_slidingwindowlength(kernel_size) 
-            self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
-            self._model.set_cosinesimilarity(False) 
+            # self._model = LlamaWeirdLargeRecoveringModeOn.from_pretrained("TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T").to(torch.bfloat16) 
+            # self._model.set_sliding_window_length(kernel_size) 
+            # small_model_state_dict = SimpleSmallModel.from_pretrained("YangZhoumill/llama_160m_deciphering_tinyllama_setting0_01da4cb_hf", target_model_dim = 2048).state_dict() 
+            # self._model.set_addonsmallmodel_statedict(small_model_state_dict) 
+            # self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
+            # self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
+            # self._model.to(torch.bfloat16) 
+            # self._model.set_inference_setting(experiment_setting) 
+            # self._model.set_walpha(0.5) 
+            # self._model.set_slidingwindowlength(kernel_size) 
+            # self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
+            # self._model.set_cosinesimilarity(False) 
 
-            self._model.config.pad_token_id = 2 
-            self._model.addonsmallmodel.config.pad_token_id = 2 
-            self._model.model.eval() 
-            self._model.addonsmallmodel.eval() 
+            # self._model.config.pad_token_id = 2 
+            # self._model.addonsmallmodel.config.pad_token_id = 2 
+            # self._model.model.eval() 
+            # self._model.addonsmallmodel.eval() 
             
         else:
             try:
