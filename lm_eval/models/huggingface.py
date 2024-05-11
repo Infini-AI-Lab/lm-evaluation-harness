@@ -552,6 +552,8 @@ class HFLM(TemplateLM):
             
             # else: 
             from transformers.models.llama.modeling_llama import LlamaWeirdLargeTest 
+            from transformers.models.llama.modeling_llama import LlamaWeirdLargeRecoveringModeOn 
+            from transformers.models.llama.modeling_llama import SimpleSmallModel 
             # large_model = LlamaWeirdLargeTest.from_pretrained(args.loading_from_checkpoint, cache_dir = dir_models).to(torch.bfloat16).to(torch_device) 
             # large_model.set_sliding_window_length(args.kernelsize) 
             # large_model.addonsmallmodel.set_criticalpath(hostname = hostname) 
@@ -571,13 +573,30 @@ class HFLM(TemplateLM):
             # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize2setting0checkpoint-1000" 
             # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallmodelkernelsize2setting0oldcheckpoint-3000" 
             # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize4setting0checkpoint-1000" 
-            loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllama_setting3_kernelsize2_2_checkpoint-1900" 
-            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallkernelsize4setting0checkpoint-3000" 
-            kernel_size = 1 
-            experiment_setting = "setting3" 
+            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllama_setting3_kernelsize2_2_checkpoint-1900" 
+            # # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallkernelsize4setting0checkpoint-3000" 
+            kernel_size = 7 
+            experiment_setting = "setting0" 
             
-            self._model = LlamaWeirdLargeTest.from_pretrained(loadingfromcheckpoint) 
+            # self._model = LlamaWeirdLargeTest.from_pretrained(loadingfromcheckpoint) 
+            # self._model.set_sliding_window_length(kernel_size) 
+            # self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
+            # self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
+            # self._model.to(torch.bfloat16) 
+            # self._model.set_inference_setting(experiment_setting) 
+            # self._model.set_walpha(0.5) 
+            # self._model.set_slidingwindowlength(kernel_size) 
+            # self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
+            # self._model.set_cosinesimilarity(False) 
+            # self._model.config.pad_token_id = 2 
+            # self._model.addonsmallmodel.config.pad_token_id = 2 
+            # self._model.model.eval() 
+            # self._model.addonsmallmodel.eval() 
+            
+            self._model = LlamaWeirdLargeRecoveringModeOn.from_pretrained("TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T").to(torch.bfloat16) 
             self._model.set_sliding_window_length(kernel_size) 
+            small_model_state_dict = SimpleSmallModel.from_pretrained("YangZhoumill/llama_160m_deciphering_tinyllama_setting0_01da4cb_hf", target_model_dim = 2048).state_dict() 
+            self._model.set_addonsmallmodel_statedict(small_model_state_dict) 
             self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
             self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
             self._model.to(torch.bfloat16) 
@@ -586,6 +605,7 @@ class HFLM(TemplateLM):
             self._model.set_slidingwindowlength(kernel_size) 
             self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
             self._model.set_cosinesimilarity(False) 
+
             self._model.config.pad_token_id = 2 
             self._model.addonsmallmodel.config.pad_token_id = 2 
             self._model.model.eval() 
