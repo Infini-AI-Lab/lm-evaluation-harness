@@ -632,7 +632,7 @@ class HFLM(TemplateLM):
             config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
             model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.bfloat16).to("cuda:0") 
             model.config.mode = "gen" 
-            model.config.schedule_method = "topk" 
+            model.config.selection_method = "topk" 
             
             schedule = [density for _ in range(config.num_hidden_layers)] 
             
