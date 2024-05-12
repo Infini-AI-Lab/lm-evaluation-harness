@@ -39,7 +39,9 @@ import os
 current_dir = os.path.dirname(__file__) 
 parent_dir = os.path.dirname(current_dir) 
 src_folder = os.path.join(parent_dir, "src") 
+secondlevelparent_dir = os.path.dirname(parent_dir) 
 sys.path.append(src_folder) 
+sys.path.append(secondlevelparent_dir) 
 from griffin.llama import get_llama_griffin 
 
 
