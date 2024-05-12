@@ -34,6 +34,12 @@ from lm_eval.models.utils import (
     stop_sequences_criteria,
 ) 
 
+import sys 
+import os 
+current_dir = os.path.dirname(__file__) 
+parent_dir = os.path.dirname(current_dir) 
+src_folder = os.path.join(parent_dir, "src") 
+sys.path.append(src_folder) 
 from griffin.llama import get_llama_griffin 
 
 
