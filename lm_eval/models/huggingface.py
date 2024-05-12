@@ -32,7 +32,9 @@ from lm_eval.models.utils import (
     get_dtype,
     pad_and_concat,
     stop_sequences_criteria,
-)
+) 
+
+from griffin.llama import get_llama_griffin 
 
 
 eval_logger = utils.eval_logger
@@ -594,27 +596,40 @@ class HFLM(TemplateLM):
             # self._model.addonsmallmodel.eval() 
             
             # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringmodekernelsize4setting0checkpoint-750" 
-            recoveringpath = "/home/yangzho6/model_checkpoints/recoveringkernelsize4setting0checkpoint-1500" 
             # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringkernelsize8setting0checkpoint-1500" 
-            self._model = LlamaWeirdLargeRecoveringModeOn.from_pretrained(recoveringpath).to(torch.bfloat16) 
-            self._model.set_sliding_window_length(kernel_size) 
-            '''
-            small_model_state_dict = SimpleSmallModel.from_pretrained("YangZhoumill/llama_160m_deciphering_tinyllama_setting0_01da4cb_hf", target_model_dim = 2048).state_dict() 
-            self._model.set_addonsmallmodel_statedict(small_model_state_dict) 
-            ''' 
-            self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
-            self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
-            self._model.to(torch.bfloat16) 
-            self._model.set_inference_setting(experiment_setting) 
-            self._model.set_walpha(0.5) 
-            self._model.set_slidingwindowlength(kernel_size) 
-            self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
-            self._model.set_cosinesimilarity(False) 
+            # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringkernelsize4setting0checkpoint-1500" 
+            # self._model = LlamaWeirdLargeRecoveringModeOn.from_pretrained(recoveringpath).to(torch.bfloat16) 
+            # self._model.set_sliding_window_length(kernel_size) 
+            # '''
+            # small_model_state_dict = SimpleSmallModel.from_pretrained("YangZhoumill/llama_160m_deciphering_tinyllama_setting0_01da4cb_hf", target_model_dim = 2048).state_dict() 
+            # self._model.set_addonsmallmodel_statedict(small_model_state_dict) 
+            # ''' 
+            # self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
+            # self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
+            # self._model.to(torch.bfloat16) 
+            # self._model.set_inference_setting(experiment_setting) 
+            # self._model.set_walpha(0.5) 
+            # self._model.set_slidingwindowlength(kernel_size) 
+            # self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
+            # self._model.set_cosinesimilarity(False) 
 
-            self._model.config.pad_token_id = 2 
-            self._model.addonsmallmodel.config.pad_token_id = 2 
-            self._model.model.eval() 
-            self._model.addonsmallmodel.eval() 
+            # self._model.config.pad_token_id = 2 
+            # self._model.addonsmallmodel.config.pad_token_id = 2 
+            # self._model.model.eval() 
+            # self._model.addonsmallmodel.eval() 
+            
+            from transformers import AutoModelForCausalLM 
+            from transformers import AutoConfig 
+            density = 0.5 
+            config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
+            model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.bfloat16).to("cuda:0") 
+            model.config.mode = "gen" 
+            model.config.schedule_method = "topk" 
+            
+            schedule = [density for _ in range(config.num_hidden_layers)] 
+            
+            self._model = get_llama_griffin(model, schedule) 
+            self._model.eval() 
             
         else:
             try:
