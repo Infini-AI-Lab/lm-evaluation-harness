@@ -633,7 +633,7 @@ class HFLM(TemplateLM):
             model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
             model.config.mode = "gen" 
             # large_model.config.chunksize = 8 
-            model.config.config.chunksize = 8 
+            model.config.chunksize = 8 
             model.config.selection_method = "topk" 
             
             schedule = [density for _ in range(config.num_hidden_layers)] 
