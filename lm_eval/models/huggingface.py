@@ -628,7 +628,7 @@ class HFLM(TemplateLM):
             from transformers import AutoModelForCausalLM 
             from transformers import AutoConfig, LlamaConfig 
             from transformers.models.llama.modeling_llama import LlamaForCausalLM2 
-            '''
+            
             density = 0.5 
             # config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
             # model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
@@ -648,7 +648,7 @@ class HFLM(TemplateLM):
             
             # self._model = get_llama_griffin(model, schedule) 
             self._model.eval() 
-            ''' 
+            
         else:
             try:
                 from auto_gptq import AutoGPTQForCausalLM
