@@ -540,25 +540,25 @@ class HFLM(TemplateLM):
                 model_kwargs.update({"device_map": {"": str(self.device)}})
 
         if not autogptq: 
-            # if model_kwargs.get("load_in_4bit", None):
-            #     assert (
-            #         transformers.__version__ >= "4.30.0"
-            #     ), "load_in_4bit requires transformers >= 4.30.0"
-            # if transformers.__version__ >= "4.30.0":
-            #     if model_kwargs.get("load_in_4bit", None):
-            #         if model_kwargs.get("bnb_4bit_compute_dtype", None):
-            #             model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
-            #                 model_kwargs["bnb_4bit_compute_dtype"]
-            #             ) 
+            if model_kwargs.get("load_in_4bit", None):
+                assert (
+                    transformers.__version__ >= "4.30.0"
+                ), "load_in_4bit requires transformers >= 4.30.0"
+            if transformers.__version__ >= "4.30.0":
+                if model_kwargs.get("load_in_4bit", None):
+                    if model_kwargs.get("bnb_4bit_compute_dtype", None):
+                        model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
+                            model_kwargs["bnb_4bit_compute_dtype"]
+                        ) 
             
-            # # print("pretrained: ", pretrained) 
-            # self._model = self.AUTO_MODEL_CLASS.from_pretrained(
-            #     pretrained,
-            #     revision=revision,
-            #     torch_dtype=get_dtype(dtype),
-            #     trust_remote_code=trust_remote_code,
-            #     **model_kwargs,
-            # ) 
+            # print("pretrained: ", pretrained) 
+            self._model = self.AUTO_MODEL_CLASS.from_pretrained(
+                pretrained,
+                revision=revision,
+                torch_dtype=get_dtype(dtype),
+                trust_remote_code=trust_remote_code,
+                **model_kwargs,
+            ) 
             
             # else: 
             from transformers.models.llama.modeling_llama import LlamaWeirdLargeTest 
@@ -629,6 +629,7 @@ class HFLM(TemplateLM):
             from transformers import AutoModelForCausalLM 
             from transformers import AutoConfig, LlamaConfig 
             from transformers.models.llama.modeling_llama import LlamaForCausalLM2 
+            '''
             density = 0.5 
             # config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
             # model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
@@ -648,7 +649,7 @@ class HFLM(TemplateLM):
             
             # self._model = get_llama_griffin(model, schedule) 
             self._model.eval() 
-            
+            ''' 
         else:
             try:
                 from auto_gptq import AutoGPTQForCausalLM
