@@ -39,11 +39,13 @@ class LlamaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = F.silu
+        self.act_fn = F.silu 
         
         self.k_factor = k_factor
         self.mode = config.mode
-        assert self.mode in ['gen', 'class']
+        assert self.mode in ['gen', 'class'] 
+        self.chunksize = config.chunksize 
+        self.generationiterationcount = -1 
 
 
     def prepare_reduced_weights(self, topk_indices):
@@ -52,7 +54,7 @@ class LlamaMLP(nn.Module):
         self.gate_proj_reduced = nn.Linear(self.gate_proj.weight.data.shape[1], len(topk_indices), bias=False)
         self.up_proj_reduced = nn.Linear(self.up_proj.weight.data.shape[1], len(topk_indices), bias=False)
         self.down_proj_reduced = nn.Linear(len(topk_indices), self.down_proj.weight.data.shape[0], bias=False)
-        topk_indices = topk_indices[0]
+        topk_indices = topk_indices[0] 
 
         self.gate_proj_reduced.weight.data = self.gate_proj.weight.data[topk_indices]
         self.up_proj_reduced.weight.data = self.up_proj.weight.data[topk_indices]
@@ -60,6 +62,7 @@ class LlamaMLP(nn.Module):
     
 
     def forward(self, x):
+        self.generationiterationcount += 1 
         if self.config.pretraining_tp > 1:
             slice = self.intermediate_size // self.config.pretraining_tp
             gate_proj_slices = self.gate_proj.weight.split(slice, dim=0)
@@ -79,14 +82,15 @@ class LlamaMLP(nn.Module):
         else:
             k_factor = self.k_factor
             if self.mode == 'gen':
-                if x.shape[1] > 1:
+                if self.generationiterationcount % (self.chunksize + 1) == 0: 
                     int_states = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
 
                     # GRIFFIN Expert Selection
                     if self.config.selection_method != 'magnitude' and k_factor > 0.0: ###
                         k = int(int_states.shape[-1] * k_factor)
                         neuron_stat = ((int_states / int_states.norm(dim=-1).unsqueeze(-1))).norm(dim=1) # B, D
-                        topk_weight, topk_indices = select_neurons(neuron_stat, self.config.selection_method, k)
+                        topk_weight, topk_indices = select_neurons(neuron_stat, self.config.selection_method, k) 
+                        print("at number {}, we re-select neurons".format(self.generationiterationcount)) 
                         self.prepare_reduced_weights(topk_indices)
                         
                     down_proj = self.down_proj(int_states)

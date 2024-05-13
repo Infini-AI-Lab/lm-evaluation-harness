@@ -42,7 +42,7 @@ src_folder = os.path.join(parent_dir, "src")
 secondlevelparent_dir = os.path.dirname(parent_dir) 
 sys.path.append(src_folder) 
 sys.path.append(secondlevelparent_dir) 
-from griffin.llama import get_llama_griffin 
+from griffin.llama_chunk_redirecting import get_llama_griffin 
 
 
 eval_logger = utils.eval_logger
@@ -630,7 +630,7 @@ class HFLM(TemplateLM):
             from transformers import AutoConfig 
             density = 0.5 
             config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
-            model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.bfloat16).to("cuda:0") 
+            model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
             model.config.mode = "gen" 
             model.config.selection_method = "topk" 
             
