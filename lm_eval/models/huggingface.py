@@ -633,8 +633,8 @@ class HFLM(TemplateLM):
             # config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
             # model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
             
-            config = LlamaConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
-            model = LlamaForCausalLM2.from_pretrained("meta-llama/Llama-2-7b-hf") 
+            config = LlamaConfig.from_pretrained("meta-llama/Llama-2-7b-chat-hf") 
+            model = LlamaForCausalLM2.from_pretrained("meta-llama/Llama-2-7b-chat-hf") 
             
             model.config.mode = "gen" 
             # large_model.config.chunksize = 8 
