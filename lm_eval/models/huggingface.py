@@ -630,8 +630,8 @@ class HFLM(TemplateLM):
             from transformers import AutoConfig, LlamaConfig 
             from transformers.models.llama.modeling_llama import LlamaForCausalLM2 
             density = 0.5 
-            config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-chat-hf") 
-            model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-chat-hf").to(torch.float16).to("cuda:0") 
+            config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
+            model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
             
             # config = LlamaConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
             # model = LlamaForCausalLM2.from_pretrained("meta-llama/Llama-2-7b-hf") 
