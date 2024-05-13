@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from griffin.utils import select_neurons
 
-def get_llama_griffin(model,  k_schedule):
+def get_llama_griffintwo(model,  k_schedule): 
     config = model.config
     for i, l in enumerate(model.model.layers):
         new_mlp = LlamaMLP(config, k_schedule[i])
@@ -27,7 +27,7 @@ def get_llama_griffin(model,  k_schedule):
 
         l.mlp = new_mlp
     
-    return model
+    return model 
 
 
 class LlamaMLP(nn.Module):
