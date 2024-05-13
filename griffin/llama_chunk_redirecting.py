@@ -98,7 +98,7 @@ class LlamaMLP(nn.Module):
                         if self.neuron_stat is None: 
                             self.neuron_stat = neuron_stat 
                         else: 
-                            self.neuron_stat = 
+                            self.neuron_stat = torch.sqrt(torch.pow(self.neuron_stat, 2) + torch.pow(neuron_stat, 2)) 
                         topk_weight, topk_indices = select_neurons(neuron_stat, self.config.selection_method, k) 
                         # print("at number {}, we re-select neurons".format(self.generationiterationcount)) 
                         self.prepare_reduced_weights(topk_indices)
