@@ -27,7 +27,7 @@ def get_llama_griffintwo(model,  k_schedule):
 
         l.mlp = new_mlp
     
-    return model 
+    return model
 
 
 class LlamaMLP(nn.Module):
@@ -46,6 +46,9 @@ class LlamaMLP(nn.Module):
         assert self.mode in ['gen', 'class'] 
         self.chunksize = config.chunksize 
         self.generationiterationcount = -1 
+        
+    def resetgenerationiterateingcount(self): 
+        self.generationiterationcount = -1 
 
 
     def prepare_reduced_weights(self, topk_indices):
@@ -63,6 +66,7 @@ class LlamaMLP(nn.Module):
 
     def forward(self, x):
         self.generationiterationcount += 1 
+        
         if self.config.pretraining_tp > 1:
             slice = self.intermediate_size // self.config.pretraining_tp
             gate_proj_slices = self.gate_proj.weight.split(slice, dim=0)
@@ -90,7 +94,7 @@ class LlamaMLP(nn.Module):
                         k = int(int_states.shape[-1] * k_factor)
                         neuron_stat = ((int_states / int_states.norm(dim=-1).unsqueeze(-1))).norm(dim=1) # B, D
                         topk_weight, topk_indices = select_neurons(neuron_stat, self.config.selection_method, k) 
-                        # print("at number {}, we re-select neurons".format(self.generationiterationcount)) 
+                        print("at number {}, we re-select neurons".format(self.generationiterationcount)) 
                         self.prepare_reduced_weights(topk_indices)
                         
                     down_proj = self.down_proj(int_states)
