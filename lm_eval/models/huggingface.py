@@ -630,21 +630,21 @@ class HFLM(TemplateLM):
             from transformers import AutoConfig, LlamaConfig 
             from transformers.models.llama.modeling_llama import LlamaForCausalLM2 
             density = 0.5 
-            config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
-            model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
+            # config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
+            # model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
             
-            # config = LlamaConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
-            # model = LlamaForCausalLM2.from_pretrained("meta-llama/Llama-2-7b-hf") 
+            config = LlamaConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
+            model = LlamaForCausalLM2.from_pretrained("meta-llama/Llama-2-7b-hf") 
             
             model.config.mode = "gen" 
             # large_model.config.chunksize = 8 
-            # model.config.chunksize = 8 
+            model.config.chunksize = 8 
             model.config.selection_method = "topk" 
             
             schedule = [density for _ in range(config.num_hidden_layers)] 
             
-            # self._model = get_llama_griffintwo(model, schedule) 
-            self._model = get_llama_griffin(model, schedule) 
+            self._model = get_llama_griffintwo(model, schedule) 
+            # self._model = get_llama_griffin(model, schedule) 
             
             # self._model = get_llama_griffin(model, schedule) 
             self._model.eval() 
