@@ -538,7 +538,7 @@ class HFLM(TemplateLM):
                 else: 
                     raise ValueError("You have to specify chunksize for chunked model") 
             pretrained = segments[0] 
-            
+        print("The argument input is pretrained {} griffin {} chunked {} chunksize {}".format(pretrained, griffin, chunked, chunksize)) 
 
         if parallelize:
             model_kwargs.update(
