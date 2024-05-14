@@ -42,8 +42,8 @@ src_folder = os.path.join(parent_dir, "src")
 secondlevelparent_dir = os.path.dirname(parent_dir) 
 sys.path.append(src_folder) 
 sys.path.append(secondlevelparent_dir) 
-from griffin.llama_chunk_redirecting import get_llama_griffintwo 
-from griffin.llama import get_llama_griffin 
+from transformers.griffin.llama_chunk_redirecting import get_llama_griffintwo 
+from transformers.griffin.llama import get_llama_griffin 
 
 eval_logger = utils.eval_logger
 
