@@ -198,10 +198,10 @@ class HFLM(TemplateLM):
             revision = revision + ("/" + subfolder if subfolder is not None else "")
 
             self._get_config(
-                pretrained,
+                pretrained.split("_")[0] if "_" in pretrained else pretrained, 
                 revision=revision,
                 trust_remote_code=trust_remote_code,
-            )
+            ) 
 
         # determine which of 'causal' and 'seq2seq' backends to use
         self._get_backend(
@@ -245,12 +245,12 @@ class HFLM(TemplateLM):
                     )
 
         self._create_tokenizer(
-            pretrained,
+            pretrained.split("_")[0] if "_" in pretrained else pretrained, 
             tokenizer,
             revision=revision,
             trust_remote_code=trust_remote_code,
             use_fast_tokenizer=use_fast_tokenizer,
-        )
+        ) 
 
         self.truncation = truncation
         self.logits_cache = logits_cache
@@ -516,7 +516,28 @@ class HFLM(TemplateLM):
         please consider subclassing HFLM and overriding this and other methods as needed.
         """
 
-        model_kwargs = kwargs if kwargs else {}
+        model_kwargs = kwargs if kwargs else {} 
+        useplain = True 
+        griffin = False 
+        chunked = False 
+        chunksize = 0 
+        if "_" in pretrained: 
+            useplain = False 
+            segments = pretrained.split("_") 
+            if segments[1] == "griffin": # expected pretrained text is "modelname_griffin" 
+                griffin = True 
+                chunked = False 
+            elif segments[1] == "chunked": # expected pretrained text is "modelname_chunked_chunksize" 
+                griffin = False 
+                chunked = True 
+            else: 
+                raise ValueError("Unknown model type") 
+            if chunked and len(segments) > 2: 
+                chunksize = int(segments[2]) 
+            else: 
+                raise ValueError("You have to specify chunksize for chunked model") 
+            pretrained = segments[0] 
+            
 
         if parallelize:
             model_kwargs.update(
@@ -540,116 +561,122 @@ class HFLM(TemplateLM):
                 model_kwargs.update({"device_map": {"": str(self.device)}})
 
         if not autogptq: 
-            # if model_kwargs.get("load_in_4bit", None):
-            #     assert (
-            #         transformers.__version__ >= "4.30.0"
-            #     ), "load_in_4bit requires transformers >= 4.30.0"
-            # if transformers.__version__ >= "4.30.0":
-            #     if model_kwargs.get("load_in_4bit", None):
-            #         if model_kwargs.get("bnb_4bit_compute_dtype", None):
-            #             model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
-            #                 model_kwargs["bnb_4bit_compute_dtype"]
-            #             ) 
+            if useplain: 
+                if model_kwargs.get("load_in_4bit", None):
+                    assert (
+                        transformers.__version__ >= "4.30.0"
+                    ), "load_in_4bit requires transformers >= 4.30.0"
+                if transformers.__version__ >= "4.30.0":
+                    if model_kwargs.get("load_in_4bit", None):
+                        if model_kwargs.get("bnb_4bit_compute_dtype", None):
+                            model_kwargs["bnb_4bit_compute_dtype"] = get_dtype(
+                                model_kwargs["bnb_4bit_compute_dtype"]
+                            ) 
+                
+                self._model = self.AUTO_MODEL_CLASS.from_pretrained(
+                    pretrained,
+                    revision=revision,
+                    torch_dtype=get_dtype(dtype),
+                    trust_remote_code=trust_remote_code,
+                    **model_kwargs,
+                ) 
             
-            # self._model = self.AUTO_MODEL_CLASS.from_pretrained(
-            #     pretrained,
-            #     revision=revision,
-            #     torch_dtype=get_dtype(dtype),
-            #     trust_remote_code=trust_remote_code,
-            #     **model_kwargs,
-            # ) 
-            
-            # else: 
-            from transformers.models.llama.modeling_llama import LlamaWeirdLargeTest 
-            from transformers.models.llama.modeling_llama import LlamaWeirdLargeRecoveringModeOn 
-            from transformers.models.llama.modeling_llama import SimpleSmallModel 
-            # large_model = LlamaWeirdLargeTest.from_pretrained(args.loading_from_checkpoint, cache_dir = dir_models).to(torch.bfloat16).to(torch_device) 
-            # large_model.set_sliding_window_length(args.kernelsize) 
-            # large_model.addonsmallmodel.set_criticalpath(hostname = hostname) 
-            # large_model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
-            # large_model.to(torch.bfloat16).to(torch_device) 
-            # large_model.set_inference_setting(args.experiment_setting) 
-            # large_model.set_walpha(0.5) 
-            # large_model.set_slidingwindowlength(args.kernelsize) 
-            # large_model.set_tokenizer_bos_id(bos_id = tokenizer.bos_token_id, pad_id = tokenizer.pad_token_id) 
-            # large_model.set_cosinesimilarity(False) 
-            # large_model.config.pad_token_id = tokenizer.pad_token_id 
-            # large_model.addonsmallmodel.config.pad_token_id = tokenizer.pad_token_id 
-            # large_model.model.eval() 
-            # large_model.addonsmallmodel.eval() 
-            # print("loading from checkpoint .......") 
-            
-            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize2setting0checkpoint-1000" 
-            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallmodelkernelsize2setting0oldcheckpoint-3000" 
-            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize4setting0checkpoint-1000" 
-            # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllama_setting3_kernelsize2_2_checkpoint-1900" 
-            # # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallkernelsize4setting0checkpoint-3000" 
-            kernel_size = 4 
-            experiment_setting = "setting0" 
-            
-            # self._model = LlamaWeirdLargeTest.from_pretrained(loadingfromcheckpoint) 
-            # self._model.set_sliding_window_length(kernel_size) 
-            # self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
-            # self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
-            # self._model.to(torch.bfloat16) 
-            # self._model.set_inference_setting(experiment_setting) 
-            # self._model.set_walpha(0.5) 
-            # self._model.set_slidingwindowlength(kernel_size) 
-            # self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
-            # self._model.set_cosinesimilarity(False) 
-            # self._model.config.pad_token_id = 2 
-            # self._model.addonsmallmodel.config.pad_token_id = 2 
-            # self._model.model.eval() 
-            # self._model.addonsmallmodel.eval() 
-            
-            # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringmodekernelsize4setting0checkpoint-750" 
-            # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringkernelsize8setting0checkpoint-1500" 
-            # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringkernelsize4setting0checkpoint-1500" 
-            # self._model = LlamaWeirdLargeRecoveringModeOn.from_pretrained(recoveringpath).to(torch.bfloat16) 
-            # self._model.set_sliding_window_length(kernel_size) 
-            # '''
-            # small_model_state_dict = SimpleSmallModel.from_pretrained("YangZhoumill/llama_160m_deciphering_tinyllama_setting0_01da4cb_hf", target_model_dim = 2048).state_dict() 
-            # self._model.set_addonsmallmodel_statedict(small_model_state_dict) 
-            # ''' 
-            # self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
-            # self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
-            # self._model.to(torch.bfloat16) 
-            # self._model.set_inference_setting(experiment_setting) 
-            # self._model.set_walpha(0.5) 
-            # self._model.set_slidingwindowlength(kernel_size) 
-            # self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
-            # self._model.set_cosinesimilarity(False) 
+            else: 
+                from transformers.models.llama.modeling_llama import LlamaWeirdLargeTest 
+                from transformers.models.llama.modeling_llama import LlamaWeirdLargeRecoveringModeOn 
+                from transformers.models.llama.modeling_llama import SimpleSmallModel 
+                # kernel_size = 4 
+                # experiment_setting = "setting0" 
+                # large_model = LlamaWeirdLargeTest.from_pretrained(args.loading_from_checkpoint, cache_dir = dir_models).to(torch.bfloat16).to(torch_device) 
+                # large_model.set_sliding_window_length(args.kernelsize) 
+                # large_model.addonsmallmodel.set_criticalpath(hostname = hostname) 
+                # large_model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
+                # large_model.to(torch.bfloat16).to(torch_device) 
+                # large_model.set_inference_setting(args.experiment_setting) 
+                # large_model.set_walpha(0.5) 
+                # large_model.set_slidingwindowlength(args.kernelsize) 
+                # large_model.set_tokenizer_bos_id(bos_id = tokenizer.bos_token_id, pad_id = tokenizer.pad_token_id) 
+                # large_model.set_cosinesimilarity(False) 
+                # large_model.config.pad_token_id = tokenizer.pad_token_id 
+                # large_model.addonsmallmodel.config.pad_token_id = tokenizer.pad_token_id 
+                # large_model.model.eval() 
+                # large_model.addonsmallmodel.eval() 
+                # print("loading from checkpoint .......") 
+                
+                # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize2setting0checkpoint-1000" 
+                # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallmodelkernelsize2setting0oldcheckpoint-3000" 
+                # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/smallmodelkernelsize4setting0checkpoint-1000" 
+                # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllama_setting3_kernelsize2_2_checkpoint-1900" 
+                # # loadingfromcheckpoint = "/home/yangzho6/model_checkpoints/tinyllamasmallkernelsize4setting0checkpoint-3000" 
+                
+                # self._model = LlamaWeirdLargeTest.from_pretrained(loadingfromcheckpoint) 
+                # self._model.set_sliding_window_length(kernel_size) 
+                # self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
+                # self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
+                # self._model.to(torch.bfloat16) 
+                # self._model.set_inference_setting(experiment_setting) 
+                # self._model.set_walpha(0.5) 
+                # self._model.set_slidingwindowlength(kernel_size) 
+                # self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
+                # self._model.set_cosinesimilarity(False) 
+                # self._model.config.pad_token_id = 2 
+                # self._model.addonsmallmodel.config.pad_token_id = 2 
+                # self._model.model.eval() 
+                # self._model.addonsmallmodel.eval() 
+                
+                # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringmodekernelsize4setting0checkpoint-750" 
+                # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringkernelsize8setting0checkpoint-1500" 
+                # recoveringpath = "/home/yangzho6/model_checkpoints/recoveringkernelsize4setting0checkpoint-1500" 
+                # self._model = LlamaWeirdLargeRecoveringModeOn.from_pretrained(recoveringpath).to(torch.bfloat16) 
+                # self._model.set_sliding_window_length(kernel_size) 
+                # '''
+                # small_model_state_dict = SimpleSmallModel.from_pretrained("YangZhoumill/llama_160m_deciphering_tinyllama_setting0_01da4cb_hf", target_model_dim = 2048).state_dict() 
+                # self._model.set_addonsmallmodel_statedict(small_model_state_dict) 
+                # ''' 
+                # self._model.addonsmallmodel.set_criticalpath(hostname = "lovelace") 
+                # self._model.set_msece_loss(use_mse_loss = False, ce_loss_only = True) 
+                # self._model.to(torch.bfloat16) 
+                # self._model.set_inference_setting(experiment_setting) 
+                # self._model.set_walpha(0.5) 
+                # self._model.set_slidingwindowlength(kernel_size) 
+                # self._model.set_tokenizer_bos_id(bos_id = 1, pad_id = 2) 
+                # self._model.set_cosinesimilarity(False) 
 
-            # self._model.config.pad_token_id = 2 
-            # self._model.addonsmallmodel.config.pad_token_id = 2 
-            # self._model.model.eval() 
-            # self._model.addonsmallmodel.eval() 
+                # self._model.config.pad_token_id = 2 
+                # self._model.addonsmallmodel.config.pad_token_id = 2 
+                # self._model.model.eval() 
+                # self._model.addonsmallmodel.eval() 
             
-            from transformers import AutoModelForCausalLM 
-            from transformers import AutoConfig, LlamaConfig 
-            from transformers.models.llama.modeling_llama import LlamaForCausalLM2 
-            
-            density = 0.5 
-            # config = AutoConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
-            # model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16).to("cuda:0") 
-            
-            print("pretrained is {}".format(pretrained)) 
-            
-            config = LlamaConfig.from_pretrained("meta-llama/Llama-2-7b-hf") 
-            model = LlamaForCausalLM2.from_pretrained("meta-llama/Llama-2-7b-hf").to(torch.float16) 
-            
-            model.config.mode = "gen" 
-            # large_model.config.chunksize = 8 
-            model.config.chunksize = 8 
-            model.config.selection_method = "topk" 
-            
-            schedule = [density for _ in range(config.num_hidden_layers)] 
-            
-            self._model = get_llama_griffintwo(model, schedule) 
-            # self._model = get_llama_griffin(model, schedule) 
-            
-            # self._model = get_llama_griffin(model, schedule) 
-            self._model.eval() 
+                from transformers import AutoModelForCausalLM 
+                from transformers import AutoConfig, LlamaConfig 
+                from transformers.models.llama.modeling_llama import LlamaForCausalLM2 
+                
+                density = 0.5 
+                if griffin: 
+                    config = AutoConfig.from_pretrained(pretrained) 
+                    model = AutoModelForCausalLM.from_pretrained(pretrained).to(torch.float16).to("cuda:0") 
+                    
+                    model.config.mode = "gen" 
+                    model.config.selection_method = "topk" 
+                    
+                    schedule = [density for _ in range(config.num_hidden_layers)] 
+                    
+                    self._model = get_llama_griffin(model, schedule) 
+                elif chunked: 
+                    assert chunksize > 0 
+                    
+                    config = LlamaConfig.from_pretrained(pretrained)
+                    model = LlamaForCausalLM2.from_pretrained(pretrained).to(torch.float16) 
+                
+                    model.config.mode = "gen" 
+
+                    model.config.selection_method = "topk" 
+                
+                    schedule = [density for _ in range(config.num_hidden_layers)] 
+                
+                    self._model = get_llama_griffintwo(model, schedule, chunksize) 
+                
+                self._model.eval() 
             
         else:
             try:
