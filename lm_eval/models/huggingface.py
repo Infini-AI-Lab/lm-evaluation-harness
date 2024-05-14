@@ -532,10 +532,11 @@ class HFLM(TemplateLM):
                 chunked = True 
             else: 
                 raise ValueError("Unknown model type") 
-            if chunked and len(segments) > 2: 
-                chunksize = int(segments[2]) 
-            else: 
-                raise ValueError("You have to specify chunksize for chunked model") 
+            if chunked: 
+                if len(segments) > 2: 
+                    chunksize = int(segments[2]) 
+                else: 
+                    raise ValueError("You have to specify chunksize for chunked model") 
             pretrained = segments[0] 
             
 
