@@ -611,7 +611,7 @@ class HFLM(TemplateLM):
                     density = 0.5 
                     schedule = [density for _ in range(config.num_hidden_layers)] 
                     
-                    self._model = get_llama_griffinIndexOff(model, config, schedule) 
+                    self._model = get_llama_griffinIndexOff(model, schedule) 
                 else: 
                     raise ValueError("Unknown class option") 
             else: 
