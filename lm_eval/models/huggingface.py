@@ -598,6 +598,7 @@ class HFLM(TemplateLM):
                 ) 
             elif twopassclass: 
                 from transformers.griffin.llama_from_index import LlamaForCausalLMSpecializedIndex 
+                from transformers.models.llama.modeling_llama import LlamaConfig 
                 
                 if classoption == "oracle": 
                     config = LlamaConfig.from_pretrained(pretrained) 
