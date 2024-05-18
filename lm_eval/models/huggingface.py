@@ -44,6 +44,7 @@ sys.path.append(src_folder)
 sys.path.append(secondlevelparent_dir) 
 from transformers.griffin.llama_chunk_redirecting import get_llama_griffintwo 
 from transformers.griffin.llama import get_llama_griffin 
+from transformers.griffin.llama_from_index import get_llama_griffinIndexOff 
 
 eval_logger = utils.eval_logger
 
@@ -520,6 +521,8 @@ class HFLM(TemplateLM):
         useplain = True 
         griffin = False 
         chunked = False 
+        twopassclass = False 
+        classoption = None 
         chunksize = 0 
         if "_" in pretrained: 
             useplain = False 
@@ -527,9 +530,15 @@ class HFLM(TemplateLM):
             if segments[1] == "griffin": # expected pretrained text is "modelname_griffin" 
                 griffin = True 
                 chunked = False 
+                twopassclass = False 
             elif segments[1] == "chunked": # expected pretrained text is "modelname_chunked_chunksize" 
                 griffin = False 
                 chunked = True 
+                twopassclass = False 
+            elif segments[1] == "twopassclass": # expected pretrained text is "modelname_twopassclass_option" 
+                griffin = False 
+                chunked = False 
+                twopassclass = True 
             else: 
                 raise ValueError("Unknown model type") 
             if chunked: 
@@ -537,6 +546,12 @@ class HFLM(TemplateLM):
                     chunksize = int(segments[2]) 
                 else: 
                     raise ValueError("You have to specify chunksize for chunked model") 
+            if twopassclass: 
+                if len(segments) > 2: 
+                    classoption = segments[2] 
+                    assert classoption in ["oracle", "griffin", "chunking"] 
+                else: 
+                    raise ValueError("You have to specify class option for twopassclass model") 
             pretrained = segments[0] 
         print("The argument input is pretrained {} griffin {} chunked {} chunksize {}".format(pretrained, griffin, chunked, chunksize)) 
 
@@ -581,7 +596,22 @@ class HFLM(TemplateLM):
                     trust_remote_code=trust_remote_code,
                     **model_kwargs,
                 ) 
-            
+            elif twopassclass: 
+                from transformers.griffin.llama_from_index import LlamaForCausalLMSpecializedIndex 
+                
+                if classoption == "oracle": 
+                    config = LlamaConfig.from_pretrained(pretrained) 
+                    model = LlamaForCausalLMSpecializedIndex.from_pretrained(pretrained).to(torch.bfloat16).to("cuda:0") 
+                    
+                    config.mode = "class" 
+                    config.selection_method = "oracle" 
+                    
+                    density = 0.5 
+                    schedule = [density for _ in range(config.num_hidden_layers)] 
+                    
+                    self._model = get_llama_griffinIndexOff(model, schedule) 
+                else: 
+                    raise ValueError("Unknown class option") 
             else: 
                 from transformers.models.llama.modeling_llama import LlamaWeirdLargeTest 
                 from transformers.models.llama.modeling_llama import LlamaWeirdLargeRecoveringModeOn 
