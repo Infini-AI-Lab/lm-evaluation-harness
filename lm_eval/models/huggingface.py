@@ -604,13 +604,14 @@ class HFLM(TemplateLM):
                     config = LlamaConfig.from_pretrained(pretrained) 
                     model = LlamaForCausalLMSpecializedIndex.from_pretrained(pretrained).to(torch.bfloat16).to("cuda:0") 
                     
-                    config.mode = "class" 
-                    config.selection_method = "oracle" 
+                    # config.mode = "class" 
+                    model.config.mode = "class" 
+                    model.config.selection_method = "oracle" 
                     
                     density = 0.5 
                     schedule = [density for _ in range(config.num_hidden_layers)] 
                     
-                    self._model = get_llama_griffinIndexOff(model, schedule) 
+                    self._model = get_llama_griffinIndexOff(model, config, schedule) 
                 else: 
                     raise ValueError("Unknown class option") 
             else: 
