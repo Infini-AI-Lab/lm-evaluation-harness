@@ -602,7 +602,14 @@ class HFLM(TemplateLM):
                 
                 if classoption == "oracle": 
                     config = LlamaConfig.from_pretrained(pretrained) 
-                    model = LlamaForCausalLMSpecializedIndex.from_pretrained(pretrained).to(torch.bfloat16).to("cuda:0") 
+                    
+                    rank = os.environ.get("RANK") 
+                    print("the rank is {}".format(rank)) 
+                    if rank is None: 
+                        rank = 0 
+                    torch_device = 'cuda:{}'.format(rank) if torch.cuda.is_available() else 'cpu' 
+                    
+                    model = LlamaForCausalLMSpecializedIndex.from_pretrained(pretrained).to(torch.bfloat16).to(torch_device) 
                     
                     # config.mode = "class" 
                     model.config.mode = "class" 
