@@ -619,6 +619,25 @@ class HFLM(TemplateLM):
                     schedule = [density for _ in range(config.num_hidden_layers)] 
                     
                     self._model = get_llama_griffinIndexOff(model, schedule) 
+                elif classoption == "griffin": 
+                    config = LlamaConfig.from_pretrained(pretrained) 
+                    
+                    rank = os.environ.get("RANK") 
+                    print("the rank is {}".format(rank)) 
+                    if rank is None: 
+                        rank = 0 
+                    torch_device = 'cuda:{}'.format(rank) if torch.cuda.is_available() else 'cpu' 
+                    
+                    model = LlamaForCausalLMSpecializedIndex.from_pretrained(pretrained).to(torch.bfloat16).to(torch_device) 
+                    
+                    # config.mode = "class" 
+                    model.config.mode = "class" 
+                    model.config.selection_method = "griffin" 
+                    
+                    density = 0.5 
+                    schedule = [density for _ in range(config.num_hidden_layers)] 
+                    
+                    self._model = get_llama_griffinIndexOff(model, schedule) 
                 else: 
                     raise ValueError("Unknown class option") 
             else: 
