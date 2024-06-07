@@ -763,7 +763,7 @@ class SDLM(TemplateLM):
                     tokens = torch.cat([tokens, input_ids], dim=-1)
 
             num_samples = tokens.shape[1] - initial_len
-            acceptance_rate = torch.zeros(self.width, num_samples).to(self.device)
+            acceptance_rate = torch.zeros(self.width).to(self.device)
             
             target_logits :torch.Tensor= self._model(input_ids=tokens).logits
             draft_logits :torch.Tensor= self._draft(input_ids=tokens).logits
@@ -776,22 +776,37 @@ class SDLM(TemplateLM):
             target_proba = torch.nn.functional.softmax(target_logits/T, dim=-1)[0]
             draft_proba = torch.nn.functional.softmax(draft_logits/T, dim=-1)[0]
             
-            for k in range(self.width):
+            for i in range(target_proba.shape[0]):
+                token_acceptance_rate = torch.zeros(self.width).to(self.device)
                 
-                kth_sampled_token = draft_proba.multinomial(num_samples=1)
-                draft_token_proba = draft_proba.gather(dim=-1, index=kth_sampled_token)
-                target_token_proba = target_proba.gather(dim=-1, index=kth_sampled_token)
-                if k > 0:
-                    accumative_acceptance_rate = acceptance_rate[:k].sum(dim=0)
-                    acceptance_rate[k] = (target_token_proba / (draft_token_proba + 1e-9)).squeeze(-1)
-                    acceptance_rate[k].clamp_max_(max=1.0)
-                    acceptance_rate[k] = (1 - accumative_acceptance_rate) * acceptance_rate[k]
-                else:
-                    acceptance_rate[k] = (target_token_proba / (draft_token_proba + 1e-9)).squeeze(-1)
-                    acceptance_rate[k].clamp_max_(max=1.0)
-                draft_proba.scatter_(dim=-1, index=kth_sampled_token, value=0.0)
-                draft_proba = draft_proba / draft_proba.sum(dim=-1,keepdim=True)
-            
-        acceptance_rate = acceptance_rate.mean(dim=-1).cpu()
+                
+                token_target_prob = target_proba[i]
+                # token_draft_prob = q[i]
+                #draft_model_prob.append(q[i].cpu())
+                token_draft_logits = draft_logits[0][i]
+
+                token_draft_prob = F.softmax(token_draft_logits / T, dim=-1).squeeze(0)
+                sampled_token = token_draft_prob.multinomial(num_samples=1, replacement=True)
+                
+                
+                token_acceptance_rate[0] = min(1.0, (token_target_prob[sampled_token]/ token_draft_prob[sampled_token]))
+
+                token_target_prob = get_residual(token_target_prob, token_draft_prob)
+                
+                
+                for j in range(self.width-1):
+                    token_draft_logits[sampled_token] = - torch.inf
+                    token_draft_prob = F.softmax(token_draft_logits / (T), dim=-1).squeeze(0)
+                    if torch.isnan(token_draft_prob).long().sum() >= 1:
+                        break
+                    token_draft_prob = token_draft_prob / token_draft_prob.sum(-1)
+                    sampled_token = token_draft_prob.multinomial(num_samples=1, replacement=True)
+                    branch_token_acceptance_rate = min(1, token_target_prob[sampled_token]/ token_draft_prob[sampled_token])
+                    token_acceptance_rate[j+1] = (1 - token_acceptance_rate.sum()) * branch_token_acceptance_rate
+                    
+                    token_target_prob = get_residual(token_target_prob, token_draft_prob)
+                acceptance_rate = acceptance_rate + token_acceptance_rate
+                 
         
-        return acceptance_rate, num_samples
+        
+        return acceptance_rate.cpu()/num_samples, num_samples
