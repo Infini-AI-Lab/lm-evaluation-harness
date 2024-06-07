@@ -734,7 +734,6 @@ class SDLM(TemplateLM):
     def specdec(self, context_enc: torch.LongTensor):
         
         input_ids = context_enc.to(self.device)
-        outputs = self._model(input_ids=input_ids)
         initial_len = input_ids.shape[1]
         eos_tokens = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id, self.tokenizer.bos_token_id]
         past_key_values = None
@@ -751,17 +750,17 @@ class SDLM(TemplateLM):
                     logits :torch.Tensor = outputs.logits
                     logits = logits[...,-1,:]
                     logits = get_sampling_logits(logits, P, T, replicate=False)
-                    logits = torch.nn.functional.softmax(logits, dim=-1)
-                    if not greedy:
-                        new_token = torch.multinomial(logits, num_samples=1)
+                    logits = torch.nn.functional.softmax(logits/T, dim=-1)
                     
-                    else:
-                        new_token = torch.argmax(logits, dim=-1, keepdim=True)
+                    new_token = torch.multinomial(logits, num_samples=1)
                     
                     if new_token.item() in eos_tokens: break
                     input_ids = new_token
                     tokens = torch.cat([tokens, input_ids], dim=-1)
 
+        #     print(tokens)
+            #tokens = self._model.generate(inputs=input_ids, do_sample=True, temperature=T, top_k=32000, top_p=1.0, max_new_tokens=max_gen_toks)
+            
             num_samples = tokens.shape[1] - initial_len
             acceptance_rate = torch.zeros(self.width).to(self.device)
             
