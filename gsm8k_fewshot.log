@@ -1,0 +1,45 @@
+sd (pretrained=meta-llama/Llama-2-70b-hf,draft=meta-llama/Llama-2-7b-hf,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 0, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.8324|
+
+sd (pretrained=meta-llama/Llama-2-70b-hf,draft=meta-llama/Llama-2-7b-hf,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 1, batch_size: 1
+|Tasks|Metric |Value|
+|-----|-------|----:|
+|gsm8k|alpha-0|0.863|
+
+sd (pretrained=meta-llama/Llama-2-70b-hf,draft=meta-llama/Llama-2-7b-hf,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 2, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.8697|
+
+sd (pretrained=meta-llama/Llama-2-70b-hf,draft=meta-llama/Llama-2-7b-hf,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 3, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.8852|
+
+sd (pretrained=meta-llama/Llama-2-70b-hf,draft=meta-llama/Llama-2-7b-hf,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 5, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.8778|
+
+sd (pretrained=meta-llama/Llama-2-7b-hf,draft=princeton-nlp/Sheared-LLaMA-1.3B,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 0, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.8015|
+
+sd (pretrained=meta-llama/Llama-2-7b-hf,draft=princeton-nlp/Sheared-LLaMA-1.3B,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 1, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.7959|
+
+sd (pretrained=meta-llama/Llama-2-7b-hf,draft=princeton-nlp/Sheared-LLaMA-1.3B,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 2, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.8113|
+
+sd (pretrained=meta-llama/Llama-2-7b-hf,draft=princeton-nlp/Sheared-LLaMA-1.3B,temperature=0.6,width=1), gen_kwargs: (None), limit: 0.1, num_fewshot: 3, batch_size: 1
+|Tasks|Metric |Value |
+|-----|-------|-----:|
+|gsm8k|alpha-0|0.8128|
+
