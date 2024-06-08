@@ -744,19 +744,7 @@ class SDLM(TemplateLM):
         max_gen_toks = self.max_gen_toks
         
         with torch.inference_mode():
-            for _ in range(max_gen_toks):
-                    outputs = self._model(input_ids=input_ids, past_key_values=past_key_values, use_cache=True)
-                    past_key_values = outputs.past_key_values
-                    logits :torch.Tensor = outputs.logits
-                    logits = logits[...,-1,:]
-                    logits = get_sampling_logits(logits, P, T, replicate=False)
-                    logits = torch.nn.functional.softmax(logits/T, dim=-1)
-                    
-                    new_token = torch.multinomial(logits, num_samples=1)
-                    
-                    if new_token.item() in eos_tokens: break
-                    input_ids = new_token
-                    tokens = torch.cat([tokens, input_ids], dim=-1)
+            tokens = self._model.generate(tokens, do_sample=True, temperature=T, top_p=1.0, top_k=self.vocab_size, max_new_tokens=max_gen_toks)
 
         #     print(tokens)
             #tokens = self._model.generate(inputs=input_ids, do_sample=True, temperature=T, top_k=32000, top_p=1.0, max_new_tokens=max_gen_toks)
