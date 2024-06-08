@@ -731,7 +731,7 @@ class SDLM(TemplateLM):
 
         return res
 
-     def specdec(self, context_enc: torch.LongTensor):
+    def specdec(self, context_enc: torch.LongTensor):
         
         input_ids = context_enc.to(self.device)
         initial_len = input_ids.shape[1]
