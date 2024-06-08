@@ -606,32 +606,38 @@ def evaluate(
                 if task_name not in results_dict["results"].keys():
                     results_dict["results"][task_name] = {
                         "alpha": [],
+                        "nll": [],
                         "num_samples": []
                     }
                 resps = req.resps
                 
                 
                 results_dict["results"][task_name]["alpha"].append(resps[0]["alpha"])
+                results_dict["results"][task_name]["nll"].append(resps[0]["nll"])
                 results_dict["results"][task_name]["num_samples"].append(resps[0]["num_samples"])
 
         
         for task_name in results_dict["results"].keys():
             alphas = results_dict["results"][task_name]["alpha"]
+            nlls = results_dict["results"][task_name]["nll"]
             num_samples = results_dict["results"][task_name]["num_samples"]
             alphas = torch.stack(alphas)
-            
+            nlls = torch.stack(nlls)
             
             num_samples = torch.Tensor(num_samples).unsqueeze(-1)
            
             alpha = (alphas * num_samples).sum(dim=0) / num_samples.sum()
+            nll = (nlls * num_samples).sum(dim=0) / num_samples.sum()
             width = alpha.shape[0]
             
             for i in range(width):
                 results_dict["results"][task_name]["alpha-{}".format(i)] = alpha[i].item()
+                results_dict["results"][task_name]["nll-{}".format(i)] = nll[i].item()
             
         for task_name in results_dict["results"].keys():
             results_dict["results"][task_name].pop("num_samples", None)
             results_dict["results"][task_name].pop("alpha", None)
+            results_dict["results"][task_name].pop("nll", None)
         
         return results_dict
 

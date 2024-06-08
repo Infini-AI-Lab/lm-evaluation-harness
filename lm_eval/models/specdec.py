@@ -715,10 +715,11 @@ class SDLM(TemplateLM):
                 truncation=self.truncation,
             )
             
-            acceptance_rate, num_samples = self.specdec(context_enc)
+            acceptance_rate, nll_loss, num_samples = self.specdec(context_enc)
             
             res.append({
                     "alpha": acceptance_rate.cumsum_(dim=0),
+                    "nll": nll_loss,
                     "num_samples": num_samples
                 })
                 
@@ -772,6 +773,11 @@ class SDLM(TemplateLM):
                 
             target_logits = target_logits[...,initial_len:,:]
             draft_logits = draft_logits[...,initial_len:,:]
+
+            # calculate nll loss
+            nll_loss = torch.nn.functional.cross_entropy(draft_logits[:, :-1, :].reshape(-1, draft_logits.shape[-1]), 
+                                                        tokens[:, -num_samples+1:].reshape(-1), reduction='mean')
+
             target_proba = torch.nn.functional.softmax(target_logits/T, dim=-1)[0]
             draft_proba = torch.nn.functional.softmax(draft_logits/T, dim=-1)[0]
             
@@ -808,4 +814,4 @@ class SDLM(TemplateLM):
                  
         
         
-        return acceptance_rate.cpu()/num_samples, num_samples
+        return acceptance_rate.cpu()/num_samples, nll_loss.cpu(), num_samples
