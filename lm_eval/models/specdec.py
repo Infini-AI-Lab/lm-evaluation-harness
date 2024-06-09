@@ -755,7 +755,7 @@ class SDLM(TemplateLM):
                 truncation=self.truncation,
             )
             if draft_context_enc.shape[1] > max_ctx_len:
-                acceptance_rate, nll_loss, num_samples = torch.tensor(0.0), torch.tensor(0.0), 0
+                acceptance_rate, nll_loss, num_samples = torch.tensor([0.0]), torch.tensor([0.0]), 0
 
             else:
                 target_context_enc, _ = self.tok_batch_encode(
@@ -827,4 +827,4 @@ class SDLM(TemplateLM):
                  
 
         
-        return total_acceptance_rate.cpu()/num_samples, nll_loss.cpu(), num_samples
+        return total_acceptance_rate.cpu()/num_samples, nll_loss.cpu().unsqueeze(0), num_samples
