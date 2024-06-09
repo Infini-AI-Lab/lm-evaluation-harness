@@ -633,6 +633,7 @@ def evaluate(
             for i in range(width):
                 results_dict["results"][task_name]["alpha-{}".format(i)] = alpha[i].item()
                 results_dict["results"][task_name]["nll-{}".format(i)] = nll[i].item()
+                results_dict["results"][task_name]["num_samples-{}".format(i)] = num_samples[i].item()
             
         for task_name in results_dict["results"].keys():
             results_dict["results"][task_name].pop("num_samples", None)
