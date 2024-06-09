@@ -131,6 +131,9 @@ class SDLM(TemplateLM):
         peft: Optional[str] = None,
         delta: Optional[str] = None,
         autogptq: Optional[Union[bool, str]] = False,
+        # specdec options
+        draft_nshots=0,
+        target_nshots=0,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -322,6 +325,10 @@ class SDLM(TemplateLM):
             eval_logger.info(
                 f"Loglikelihood prefix token id used in evaluation: {self.prefix_token_id}"
             )
+
+        assert draft_nshots >= target_nshots, "Draft nshots should be greater than or equal to target nshots"
+        self.draft_nshots = draft_nshots
+        self.target_nshots = target_nshots
 
     @property
     def config(self):
@@ -669,6 +676,29 @@ class SDLM(TemplateLM):
         self, requests: List[Instance], disable_tqdm: bool = False
     ) -> List[str]:
         pass
+
+
+    def get_nshot(self, context, delimiter):
+        # support for asymmetric context lens for draft and target models   
+        if self.draft_nshots == 0:
+            return context, context
+        
+        prompts = context.split(delimiter)
+        text = prompts[-1]
+        examples = prompts[1:-1]
+
+        assert len(examples) == self.draft_nshots
+
+        draft_input_text = delimiter + delimiter.join(examples[-self.draft_nshots:]) + delimiter + text
+
+        if self.target_nshots > 0:
+            target_input_text = delimiter + delimiter.join(examples[-self.target_nshots:]) + delimiter + text
+        else:
+            target_input_text = delimiter + text
+
+        return draft_input_text, target_input_text
+
+    
     def specdec_eval(
         self, requests: List[Instance], disable_tqdm: bool = False
     ) -> List[str]:
@@ -702,20 +732,39 @@ class SDLM(TemplateLM):
             group_fn=lambda x: x[1],
         )
         chunks = re_ords.get_batched(n=batch_size, batch_fn=batch_fn)
+
+        delimiters = {
+            "gsm8k": "Question: ",
+            "cnn_dailymail": "Summarize the following article: ",
+            "xsum": "Article: ",
+        }
+        delimiter = delimiters[requests[0].task_name]
         
         for chunk in chunks:
-            contexts, _ = zip(*chunk)
-            
+            contexts, _ = zip(*chunk)   # context is a tuple of length 1 for batch-size=1
+
+            draft_input_text, target_input_text = self.get_nshot(contexts[0], delimiter)
+
             max_gen_toks = self.max_gen_toks
             max_ctx_len = self.max_length - max_gen_toks
             
-            context_enc, _ = self.tok_batch_encode(
-                contexts,
-                left_truncate_len=max_ctx_len,
+            # ensure that the context is not too long
+            draft_context_enc, _ = self.tok_batch_encode(
+                (draft_input_text,),
+                left_truncate_len=None,
                 truncation=self.truncation,
             )
+            if draft_context_enc.shape[1] > max_ctx_len:
+                acceptance_rate, nll_loss, num_samples = torch.tensor(0.0), torch.tensor(0.0), 0
+
+            else:
+                target_context_enc, _ = self.tok_batch_encode(
+                    (target_input_text,),
+                    left_truncate_len=max_ctx_len,
+                    truncation=self.truncation,
+                )
             
-            acceptance_rate, nll_loss, num_samples = self.specdec(context_enc)
+                acceptance_rate, nll_loss, num_samples = self.specdec(draft_context_enc, target_context_enc)
             
             res.append({
                     "alpha": acceptance_rate.cumsum_(dim=0),
@@ -732,9 +781,10 @@ class SDLM(TemplateLM):
 
         return res
 
-    def specdec(self, context_enc: torch.LongTensor):
+    def specdec(self, draft_context_enc: torch.LongTensor, target_context_enc: torch.LongTensor):
         
-        input_ids = context_enc.to(self.device)
+        input_ids = target_context_enc.to(self.device)
+        draft_input_ids = draft_context_enc.to(self.device)
         initial_len = input_ids.shape[1]
         eos_tokens = [self.tokenizer.pad_token_id, self.tokenizer.eos_token_id, self.tokenizer.bos_token_id]
         past_key_values = None
@@ -752,15 +802,20 @@ class SDLM(TemplateLM):
             
             num_samples = tokens.shape[1] - initial_len
             
+            draft_tokens = torch.cat([draft_input_ids, tokens[:, -num_samples:]], dim=-1)
             
             target_logits :torch.Tensor= self._model(input_ids=tokens).logits
-            draft_logits :torch.Tensor= self._draft(input_ids=tokens).logits
+            draft_logits :torch.Tensor= self._draft(input_ids=draft_tokens).logits
                 
             target_logits = get_sampling_logits(target_logits, P, T, replicate=False)
                 
                 
-            target_logits = target_logits[...,initial_len:,:]
-            draft_logits = draft_logits[...,initial_len:,:]
+            target_logits = target_logits[...,-num_samples:,:]
+            draft_logits = draft_logits[...,-num_samples:,:]
+
+            nll_loss = F.cross_entropy(draft_logits[..., :-1, :].reshape(-1, draft_logits.shape[-1]), 
+                                       tokens[..., -num_samples+1:].reshape(-1), reduction='mean')
+
             target_proba = torch.nn.functional.softmax(target_logits/T, dim=-1).unsqueeze(-1)
             draft_proba = torch.nn.functional.softmax(draft_logits/T, dim=-1).unsqueeze(-1)
             
@@ -772,4 +827,4 @@ class SDLM(TemplateLM):
                  
 
         
-        return total_acceptance_rate.cpu()/num_samples, num_samples
+        return total_acceptance_rate.cpu()/num_samples, nll_loss.cpu(), num_samples
