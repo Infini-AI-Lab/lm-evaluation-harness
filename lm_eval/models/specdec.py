@@ -687,7 +687,7 @@ class SDLM(TemplateLM):
         text = prompts[-1]
         examples = prompts[1:-1]
 
-        assert len(examples) == self.draft_nshots
+        assert len(examples) >= self.draft_nshots
 
         draft_input_text = delimiter + delimiter.join(examples[-self.draft_nshots:]) + delimiter + text
 
@@ -735,6 +735,7 @@ class SDLM(TemplateLM):
 
         delimiters = {
             "gsm8k": "Question: ",
+            "gsm8k_cot": "Q: ",
             "cnn_dailymail": "Summarize the following article: ",
             "xsum": "Article: ",
         }
