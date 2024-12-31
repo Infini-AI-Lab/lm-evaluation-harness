@@ -90,7 +90,6 @@ class MagicPigCacheOrig(DynamicCache):
             else:
                 self.num_unique[layer_idx - layer_offset] = np.concatenate([self.num_unique[layer_idx - layer_offset], unique_ratio.cpu().numpy()])
             
-            import pdb; pdb.set_trace()
             if self.sampling:
                 W_dynamic = W_dynamic * matches
 
@@ -349,12 +348,11 @@ class MagicPigCache(DynamicCache):
             params_cp.storage_hash_table = falconn.StorageHashTable.BitPackedFlatHashTable
             params_cp.num_rotations = 1
 
-            # params_cp.lsh_family = falconn.LSHFamily.CrossPolytope
-            # falconn.compute_number_of_hash_functions(self.K, params_cp)
+            params_cp.lsh_family = falconn.LSHFamily.CrossPolytope
+            falconn.compute_number_of_hash_functions(self.K, params_cp)
 
-            params_cp.lsh_family = falconn.LSHFamily.Hyperplane
-            params_cp.k = self.K
-
+            # params_cp.lsh_family = falconn.LSHFamily.Hyperplane
+            # params_cp.k = self.K
 
             local_indices = []
             for i in range(self.num_kv_heads):

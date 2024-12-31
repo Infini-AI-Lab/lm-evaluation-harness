@@ -21,7 +21,7 @@ from transformers.generation.utils import GenerationConfig, LogitsProcessorList,
 from lm_eval.models.retrieval_cache_utils import MagicPigCache, MagicPigCPLSH
 
 from transformers.models.llama.modeling_llama import LlamaFlashAttention2
-from lm_eval.models.huggingface import HFLM, _get_accelerate_args
+from lm_eval.models.huggingface import HFLM
 from lm_eval.api.registry import register_model
 
 # modifying _sample method to prepare the model anns indexes after every prefilling stage 
@@ -376,14 +376,19 @@ class SamplingLM(HFLM):
         revision: Optional[str] = "main",
         dtype: Optional[Union[str, torch.dtype]] = "auto",
         trust_remote_code: Optional[bool] = False,
+        # arguments used for splitting a model across GPUs naively.
+        # only used if `parallelize=True`.
+        # (accelerate naive PP (device_map) options)
         parallelize: Optional[bool] = False,
-        device_map_option: Optional[str] = "auto",
+        gpus: Optional[int] = None,
         max_memory_per_gpu: Optional[Union[int, str]] = None,
         max_cpu_memory: Optional[Union[int, str]] = None,
         offload_folder: Optional[str] = "./offload",
+        # PEFT, delta weights and quantization options
         peft: Optional[str] = None,
         delta: Optional[str] = None,
         autogptq: Optional[Union[bool, str]] = False,
+        gptqmodel: Optional[bool] = False,
         **kwargs,
     ) -> None:
         model_kwargs = kwargs if kwargs else {}
@@ -392,26 +397,16 @@ class SamplingLM(HFLM):
         lsh_k = model_kwargs.pop("lsh_k", None)
         budget = model_kwargs.pop("budget", None)
 
-        if parallelize:
-            model_kwargs.update(
-                _get_accelerate_args(
-                    device_map_option,  # TODO: phase out device_map_option?
-                    max_memory_per_gpu,
-                    max_cpu_memory,
-                    offload_folder,
-                )
+        model_kwargs.update(
+            self._get_accelerate_args(
+                parallelize=parallelize,
+                device_map=kwargs.get("device_map", None),
+                max_memory_per_gpu=max_memory_per_gpu,
+                max_cpu_memory=max_cpu_memory,
+                offload_folder=offload_folder,
+                gpus=gpus,
             )
-        elif "device_map" not in model_kwargs:
-            # set a device_map to initialize model on the right GPU.
-            # this is needed because it seems that the default behavior
-            # for quantized models now seems to be device_map="auto"
-            # which breaks data-parallel mode.
-            if hasattr(self, "accelerator"):
-                model_kwargs.update(
-                    {"device_map": {"": f"cuda:{self.accelerator.local_process_index}"}}
-                )
-            else:
-                model_kwargs.update({"device_map": {"": str(self.device)}})
+        )
 
         model = LlamaForCausalLM.from_pretrained(
                 pretrained,
