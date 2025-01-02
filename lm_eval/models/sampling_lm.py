@@ -424,24 +424,26 @@ class SamplingLM(HFLM):
     def generate_until(self, *args, **kwargs):
         res = super().generate_until(*args, **kwargs)
 
-        if hasattr(self.model._cache, "recalls"):
-            recalls = np.stack(self.model._cache.recalls, axis=0)
-            recalls = recalls.mean(axis=-1) # n_layer
-            print(recalls)
-            plt.plot(recalls)
-            plt.xlabel("Layer")
-            plt.ylabel("Recall@10")
-            plt.title("Recall scores per layer")
-            plt.savefig("recall_scores.png")
+        # if hasattr(self.model._cache, "recalls"):
+        #     recalls = np.stack(self.model._cache.recalls, axis=0)
+        #     recalls = recalls.mean(axis=-1) # n_layer
+        #     np.save(f"recalls_{self.model.config.cache_implementation}.npy", recalls)
+        #     print(recalls)
+        #     # plt.plot(recalls)
+        #     # plt.xlabel("Layer")
+        #     # plt.ylabel("Recall@10")
+        #     # plt.title("Recall scores per layer")
+        #     # plt.savefig("recall_scores.png")
 
-        if hasattr(self.model._cache, "num_unique"):
-            num_unique = np.stack(self.model._cache.num_unique, axis=0)
-            total_unique = num_unique.mean(axis=-1)
-            print(total_unique)
-            plt.plot(total_unique)
-            plt.xlabel("Layer")
-            plt.ylabel("Unique tokens")
-            plt.title("Unique tokens per layer")
-            plt.savefig("unique_tokens.png")
+        # if hasattr(self.model._cache, "num_unique"):
+        #     num_unique = np.stack(self.model._cache.num_unique, axis=0)
+        #     total_unique = num_unique.mean(axis=-1)
+        #     np.save(f"unique_tokens_{self.model.config.cache_implementation}.npy", total_unique)
+        #     print(total_unique)
+        #     # plt.plot(total_unique)
+        #     # plt.xlabel("Layer")
+        #     # plt.ylabel("Unique tokens")
+        #     # plt.title("Unique tokens per layer")
+        #     # plt.savefig("unique_tokens.png")
 
         return res
