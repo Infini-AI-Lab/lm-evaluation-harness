@@ -18,7 +18,7 @@ from transformers.models.llama.modeling_llama import apply_rotary_pos_emb as lla
 from transformers.models.llama.modeling_llama import repeat_kv as llama_repeat_kv
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.generation.utils import GenerationConfig, LogitsProcessorList, StoppingCriteriaList, GenerateNonBeamOutput, GenerateEncoderDecoderOutput, GenerateDecoderOnlyOutput
-from lm_eval.models.retrieval_cache_utils import MagicPigCache, MagicPigCPLSH
+from lm_eval.models.retrieval_cache_utils import SimHashRetrieveCache, CrossPolytopeRetrieveCache, MagicPigCache, MagicPigCPLSH
 
 from transformers.models.llama.modeling_llama import LlamaFlashAttention2
 from lm_eval.models.huggingface import HFLM
@@ -187,7 +187,11 @@ def _get_cache(
 
         Returns the resulting cache object.
         """
-        if self.config.cache_implementation == "magicpig":
+        if self.config.cache_implementation == 'simhash':
+            cache_cls: Cache = SimHashRetrieveCache
+        elif self.config.cache_implementation == "cplsh":
+            cache_cls: Cache = CrossPolytopeRetrieveCache
+        elif self.config.cache_implementation == "magicpig":
             cache_cls: Cache = MagicPigCache
         elif self.config.cache_implementation == "magicpig_clsh":
             cache_cls: Cache = MagicPigCPLSH
@@ -435,15 +439,15 @@ class SamplingLM(HFLM):
         #     # plt.title("Recall scores per layer")
         #     # plt.savefig("recall_scores.png")
 
-        # if hasattr(self.model._cache, "num_unique"):
-        #     num_unique = np.stack(self.model._cache.num_unique, axis=0)
-        #     total_unique = num_unique.mean(axis=-1)
-        #     np.save(f"unique_tokens_{self.model.config.cache_implementation}.npy", total_unique)
-        #     print(total_unique)
-        #     # plt.plot(total_unique)
-        #     # plt.xlabel("Layer")
-        #     # plt.ylabel("Unique tokens")
-        #     # plt.title("Unique tokens per layer")
-        #     # plt.savefig("unique_tokens.png")
+        if hasattr(self.model._cache, "num_unique"):
+            num_unique = np.stack(self.model._cache.num_unique, axis=0)
+            total_unique = num_unique.mean(axis=-1)
+            np.save(f"unique_tokens_{self.model.config.cache_implementation}.npy", total_unique)
+            print(total_unique)
+            # plt.plot(total_unique)
+            # plt.xlabel("Layer")
+            # plt.ylabel("Unique tokens")
+            # plt.title("Unique tokens per layer")
+            # plt.savefig("unique_tokens.png")
 
         return res
