@@ -145,6 +145,9 @@ def _sample(
 
             if is_prefill:
                 self._cache.prepare()
+                if getattr(self._cache, "is_calibrate", False):
+                    self._cache.calibrate()
+                    self._cache.is_calibrate = False
                 is_prefill = False
 
             # else:
@@ -449,5 +452,21 @@ class SamplingLM(HFLM):
             # plt.ylabel("Unique tokens")
             # plt.title("Unique tokens per layer")
             # plt.savefig("unique_tokens.png")
+        
+        '''
+        if hasattr(self.model._cache, "sim"):
+            thresh = []
+            import pdb; pdb.set_trace()
+            for layer_id, sim_scores in enumerate(self.model._cache.sim):
+                quantiles = np.percentile(sim_scores, list(range(5, 100, 5)), axis=-1)
+                thresh.append(quantiles)
+            thresh = np.array(thresh).transpose(0, 2, 1)
+            np.save("clsh_sim_2_probs.npy", thresh)
+        
+        if hasattr(self.model._cache, "sim_2_hitrate"):
+            hitrates = np.stack(self.model._cache.sim_2_hitrate, axis=0)
+            hitrates = hitrates.mean(axis=-1)
+            np.save("clsh_sim_2_probs.npy", hitrates)
+        '''
 
         return res

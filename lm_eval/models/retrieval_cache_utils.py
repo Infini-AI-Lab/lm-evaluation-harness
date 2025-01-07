@@ -1100,6 +1100,17 @@ class MagicPigCPLSH(DynamicCache):
         rotation = torch.rand((self.num_kv_heads, self.L, self.K, self.cpd, self.head_dim), device=device, dtype=dtype)
         self.rotation = rotation / rotation.norm(dim=-1, keepdim=True)
 
+        '''
+        #### Calibration ####
+        self.is_calibrate = True
+        self.query_cache = []
+        # self.sim = []
+        self.sim_thresh = torch.from_numpy(np.load("clsh_sim_thresh.npy")).to(device) 
+        self.sim_2_hitrate = []
+        '''
+        self.sim_thresh = torch.from_numpy(np.load("clsh_sim_thresh.npy")).to(device)
+        self.sim_2_hitrate = torch.from_numpy(np.load("clsh_sim_2_probs.npy")).to(device)
+
     def update(self,
             key_states: torch.Tensor,
             value_states: torch.Tensor,
@@ -1125,10 +1136,17 @@ class MagicPigCPLSH(DynamicCache):
             return self.key_cache[layer_idx], self.value_cache[layer_idx]
 
         if query_states is not None:
-            assert is_decode
+            # assert is_decode
             num_key_value_groups = query_states.shape[1] // key_states.shape[1]
             query_states = rearrange(query_states, "b (h r) l d -> b h (r l) d", r=num_key_value_groups)
-            
+           
+            '''
+            if self.is_calibrate:
+                assert len(self.query_cache) == layer_idx - layer_offset and not is_decode
+                self.query_cache.append(query_states)
+                return self.key_cache[layer_idx], self.value_cache[layer_idx]
+            '''
+
             key_cache = self.key_cache[layer_idx]
             last_non_local_key_states = key_cache[..., -self.local_window-1:-self.local_window, :]
 
@@ -1137,19 +1155,29 @@ class MagicPigCPLSH(DynamicCache):
             W = torch.einsum("bhld,bhtd->bhlt", query_states, key_cache)
             W_dynamic = W[..., self.sink_window : -self.local_window]   # b h r t
 
-            '''
             # sampling probs
             W_avg = torch.einsum("bhld,bhtd->bhlt", query_states, self.key_means[layer_idx - layer_offset])
             norm_q = query_states.norm(dim=-1)  # h r
             norm_k = self.key_norms[layer_idx - layer_offset] # h t
             norm_qk = torch.einsum("bhr,bht->bhrt", norm_q, norm_k)  # b h r t
             sim_dynamic = (W_dynamic - W_avg)  / norm_qk
-            collision_probs = 1 - torch.arccos(sim_dynamic) / math.pi
-            nbit = int(math.log2(self.L))
-            t = collision_probs**nbit
-            sample_probs = 1 - (1-t)**self.L  # b h r t - single collision
             '''
+            collision_probs_approx = 1 - torch.arccos(sim_dynamic) / math.pi
+            nbit = int(math.log2(self.cpd)) * self.K
+            t = collision_probs_approx**nbit
+            sample_probs_approx = 1 - (1-t)**self.L  # b h r t - single collision
+            sample_probs_approx = sample_probs_approx - self.L * t * (1 - t)**(self.L-1)
             
+            sim_thresh = self.sim_thresh[layer_idx - layer_offset]
+            hitrates = self.sim_2_hitrate[layer_idx - layer_offset]
+            sim_quantized = (sim_dynamic[0].view(sim_dynamic.shape[1], -1).unsqueeze(-1) > sim_thresh.unsqueeze(-2)).long().sum(dim=-1) # h t*n 
+            collision_probs = torch.gather(hitrates, -1, sim_quantized)
+            collision_probs = collision_probs.reshape(sim_dynamic.shape)
+            t = collision_probs**self.K
+            sample_probs = 1 - (1-t)**self.L
+            sample_probs = sample_probs - self.L * t * (1 - t)**(self.L-1)  # b h r t - 2 collisions
+            '''
+
             # calculate recall
             topk_ids = W_dynamic.topk(10, dim=-1).indices
             overlap = torch.gather(matches, -1, topk_ids)
@@ -1233,6 +1261,53 @@ class MagicPigCPLSH(DynamicCache):
             hash_code = hash_code.argmax(dim=-1)  # b h n l k
             self.hash_keys.append(hash_code)
 
+    def calibrate(self):
+        layer_offset = 0
+        for layer_idx in range(len(self.key_cache)):
+            if layer_idx in self.full_cache_layers:
+                layer_offset += 1
+                continue
+            assert len(self.query_cache) > layer_idx - layer_offset, "Calibration is to be performed"
+            query_states = self.query_cache[layer_idx - layer_offset][..., -64:, :]
+            query_states = query_states / query_states.norm(dim=-1, keepdim=True)
+            key_states = self.key_cache[layer_idx][..., self.sink_window : -self.local_window, :]
+            key_states = key_states - self.key_means[layer_idx - layer_offset]
+            key_states = key_states / self.key_norms[layer_idx - layer_offset].unsqueeze(-1)
+            sim = torch.einsum("bhld,bhtd->bhlt", query_states, key_states).view(self.num_kv_heads, -1) # h t*n
+
+            '''            
+            if len(self.sim) <= layer_idx - layer_offset:
+                self.sim.append(sim.cpu().float().numpy())
+            else:
+                self.sim[layer_idx - layer_offset] = np.concatenate([self.sim[layer_idx - layer_offset], sim.cpu().float().numpy()], axis=-1)
+            '''
+            nbuckets = 20
+            sim_thresh = self.sim_thresh[layer_idx - layer_offset]
+            sim_quantized = (sim.view(sim.shape[0], -1, 1) > sim_thresh.view(sim.shape[0], 1, -1)).long().sum(dim=-1)  # h x t*n
+            sim_2_cnt = torch.zeros(self.num_kv_heads, nbuckets, device=query_states.device, dtype=torch.int32)
+            sim_2_cnt.scatter_add_(1, sim_quantized, torch.ones_like(sim_quantized, dtype=torch.int32))
+
+            hash_code = torch.einsum("bhlkcd,bhnd->bhnlkc", self.rotation.unsqueeze(0), query_states)
+            hash_q = hash_code.argmax(dim=-1)  # b h t l k
+
+            hash_k = self.hash_keys[layer_idx - layer_offset]
+
+            hash_q = rearrange(hash_q, "b h n l k -> (b h) n (l k)")
+            hash_k = rearrange(hash_k, "b h n l k -> (b h) n (l k)")
+            hitrate = (hash_q.unsqueeze(-2) == hash_k.unsqueeze(-3)).float().mean(dim=-1)   # h t n
+            hitrate = hitrate.view(self.num_kv_heads, -1)
+
+            sim_2_hitrate = torch.zeros(self.num_kv_heads, nbuckets, device=query_states.device, dtype=torch.float32)
+            sim_2_hitrate.scatter_add_(1, sim_quantized, hitrate)
+            sim_2_hitrate = sim_2_hitrate / sim_2_cnt.float()
+            sim_2_hitrate = sim_2_hitrate.unsqueeze(-1)
+
+            if len(self.sim_2_hitrate) <= layer_idx - layer_offset:
+                self.sim_2_hitrate.append(sim_2_hitrate.cpu().float().numpy())
+            else:
+                self.sim_2_hitrate[layer_idx - layer_offset] = np.concatenate([self.sim_2_hitrate[layer_idx - layer_offset], sim_2_hitrate.cpu().float().numpy()], axis=-1)
+             
+
     def reset(self):
         self._seen_tokens = 0
         self.key_cache = []
@@ -1241,3 +1316,6 @@ class MagicPigCPLSH(DynamicCache):
         self.hash_keys = []
         self.key_norms = []
         self.key_norms_max = []
+
+        # self.query_cache = []
+        # self.is_calibrate = True
