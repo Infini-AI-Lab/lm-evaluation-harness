@@ -19,6 +19,7 @@ from transformers.models.llama.modeling_llama import repeat_kv as llama_repeat_k
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.generation.utils import GenerationConfig, LogitsProcessorList, StoppingCriteriaList, GenerateNonBeamOutput, GenerateEncoderDecoderOutput, GenerateDecoderOnlyOutput
 from lm_eval.models.retrieval_cache_utils import SimHashRetrieveCache, CrossPolytopeRetrieveCache, MagicPigCache, MagicPigCPLSH
+from lm_eval.models.retrieval_cache_utils import SimHashRetrieveCache, CrossPolytopeRetrieveCache, MagicPigCache, MagicPigCPLSH
 
 from transformers.models.llama.modeling_llama import LlamaFlashAttention2
 from lm_eval.models.huggingface import HFLM
@@ -190,6 +191,11 @@ def _get_cache(
 
         Returns the resulting cache object.
         """
+        if self.config.cache_implementation == 'simhash':
+            cache_cls: Cache = SimHashRetrieveCache
+        elif self.config.cache_implementation == "cplsh":
+            cache_cls: Cache = CrossPolytopeRetrieveCache
+        elif self.config.cache_implementation == "magicpig":
         if self.config.cache_implementation == 'simhash':
             cache_cls: Cache = SimHashRetrieveCache
         elif self.config.cache_implementation == "cplsh":
@@ -452,21 +458,5 @@ class SamplingLM(HFLM):
             # plt.ylabel("Unique tokens")
             # plt.title("Unique tokens per layer")
             # plt.savefig("unique_tokens.png")
-        
-        '''
-        if hasattr(self.model._cache, "sim"):
-            thresh = []
-            import pdb; pdb.set_trace()
-            for layer_id, sim_scores in enumerate(self.model._cache.sim):
-                quantiles = np.percentile(sim_scores, list(range(5, 100, 5)), axis=-1)
-                thresh.append(quantiles)
-            thresh = np.array(thresh).transpose(0, 2, 1)
-            np.save("clsh_sim_2_probs.npy", thresh)
-        
-        if hasattr(self.model._cache, "sim_2_hitrate"):
-            hitrates = np.stack(self.model._cache.sim_2_hitrate, axis=0)
-            hitrates = hitrates.mean(axis=-1)
-            np.save("clsh_sim_2_probs.npy", hitrates)
-        '''
 
         return res
